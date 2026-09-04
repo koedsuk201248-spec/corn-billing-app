@@ -80,12 +80,10 @@ def format_date_thai(val):
         
     return val_str
 
-# ฟังก์ชั่นใส่สูตรคำนวณใน Word (Formula Field)
 def add_word_field_formula(cell, formula_str, default_value_str, is_bold=False, font_size=14):
     p = cell.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     
-    # สร้าง Field คำนวณสูตร Word
     fldSimple = OxmlElement('w:fldSimple')
     fldSimple.set(qn('w:instr'), f'{formula_str} \\# "#,##0.00"')
     
@@ -116,8 +114,8 @@ def add_word_field_formula(cell, formula_str, default_value_str, is_bold=False, 
 # --- ส่วนหัวของเว็บ ---
 st.markdown("""
     <div class="header-card">
-        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด (สูตรคำนวณอัตโนมัติใน Word)</div>
-        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word แนวนอน - แก้ไข บาท/กก. ใน Word แล้วกด F9 คำนวณใหม่ได้ทันที!</div>
+        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด</div>
+        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word แนวนอน - ตารางชำระเงินขนาดพอดีสายตา</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -287,7 +285,7 @@ if uploaded_file is not None:
             
             st.write("---")
             
-            if st.button("🚀 สร้างไฟล์ Word ใบวางบิลสูตรคำนวณ (.docx)", type="primary", use_container_width=True):
+            if st.button("🚀 สร้างไฟล์ Word ใบวางบิล (.docx)", type="primary", use_container_width=True):
                 if len(selected_indices) == 0:
                     st.error("กรุณาเลือกอย่างน้อย 1 รายการก่อนสร้างเอกสาร")
                 else:
@@ -343,7 +341,7 @@ if uploaded_file is not None:
                     
                     for idx, item in enumerate(selected_indices, 1):
                         row_cells = table.rows[idx].cells
-                        row_num = idx + 1 # Row index in Word table (1-based, Row 1 is header)
+                        row_num = idx + 1
                         
                         w_start = item['weight_start'] if isinstance(item['weight_start'], (int, float)) else 0
                         w_end = item['weight_end'] if isinstance(item['weight_end'], (int, float)) else 0
@@ -373,7 +371,6 @@ if uploaded_file is not None:
                             f"{price_kg:.2f}"
                         ]
                         
-                        # ใส่ข้อมูลคอลัมน์ 1 - 10
                         for c_idx, val in enumerate(row_data):
                             p = row_cells[c_idx].paragraphs[0]
                             p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if c_idx in [7, 8, 9] else (WD_ALIGN_PARAGRAPH.CENTER if c_idx in [0, 1, 3, 6] else WD_ALIGN_PARAGRAPH.LEFT)
@@ -381,7 +378,6 @@ if uploaded_file is not None:
                             r.font.name = "TH SarabunPSK"
                             r.font.size = Pt(14)
                             
-                        # คอลัมน์ที่ 11 (ค่าขนส่ง): ใส่สูตรคำนวณ Word `=I{row_num}*J{row_num}` หรือ `=H{row_num}*J{row_num}`
                         col_w_letter = 'I' if w_end > 0 else 'H'
                         word_formula = f"={col_w_letter}{row_num}*J{row_num}"
                         add_word_field_formula(row_cells[10], word_formula, shipping_str, is_bold=False, font_size=14)
@@ -409,7 +405,6 @@ if uploaded_file is not None:
                     r_w_e.font.bold = True
                     r_w_e.font.size = Pt(14)
                     
-                    # รวมค่าขนส่ง (สูตร =SUM(ABOVE))
                     add_word_field_formula(row_sum[10], "=SUM(ABOVE)", f"{sum_total_shipping:,.2f}", is_bold=True, font_size=14)
 
                     # 4. แถวยอดสุทธิ
@@ -425,10 +420,9 @@ if uploaded_file is not None:
                     r_net_lbl.font.bold = True
                     r_net_lbl.font.size = Pt(14)
                     
-                    # ยอดสุทธิ
                     add_word_field_formula(row_net[10], "=K" + str(total_rows - 1), f"{sum_total_shipping:,.2f}", is_bold=True, font_size=14)
 
-                    # 5. รายละเอียดการชำระเงิน
+                    # 5. รายละเอียดการชำระเงิน (ตารางสั้นกระชับ กำหนดขนาดแน่นอน)
                     doc.add_paragraph().paragraph_format.space_after = Pt(12)
                     
                     p_pay_title = doc.add_paragraph()
@@ -439,21 +433,30 @@ if uploaded_file is not None:
                     r_pay_title.font.bold = True
                     
                     pay_table = doc.add_table(rows=3, cols=2)
+                    pay_table.alignment = WD_TABLE_ALIGNMENT.LEFT
                     set_table_borders(pay_table)
+                    
                     pay_data = [
-                        ("ชื่อบัญชี :", "หจก.ทีเอ็นพี เลขที่ 44 หมู่ที่ 9 ต.ม่วงคำ"),
+                        ("ชื่อบัญชี :", "หจก.ทีเอ็นพี โลจิสติกส์"),
                         ("ธนาคาร :", "กสิกรไทย"),
                         ("เลขที่บัญชี :", "097-1-01627-2")
                     ]
                     
+                    # กำหนดความกว้างคอลัมน์ให้กระชับ
+                    col_widths = [Inches(2.0), Inches(4.5)]
+                    
                     for r_idx, (label, val) in enumerate(pay_data):
                         row_cells = pay_table.rows[r_idx].cells
                         
+                        # คอลัมน์ซ้าย
+                        row_cells[0].width = col_widths[0]
                         p_lbl = row_cells[0].paragraphs[0]
                         r_lbl = p_lbl.add_run(label)
                         r_lbl.font.name = "TH SarabunPSK"
                         r_lbl.font.size = Pt(16)
                         
+                        # คอลัมน์ขวา
+                        row_cells[1].width = col_widths[1]
                         p_val = row_cells[1].paragraphs[0]
                         r_val = p_val.add_run(val)
                         r_val.font.name = "TH SarabunPSK"
@@ -463,7 +466,7 @@ if uploaded_file is not None:
                     doc.save(bio)
                     bio.seek(0)
                     
-                    st.success(f"สร้างใบวางบิลใส่สูตร Word สำเร็จ! รวม {len(selected_indices)} รายการ")
+                    st.success(f"สร้างใบวางบิลสำเร็จ! รวม {len(selected_indices)} รายการ")
                     st.download_button(
                         label="📥 กดดาวน์โหลดไฟล์ใบวางบิล (.docx)",
                         data=bio,
