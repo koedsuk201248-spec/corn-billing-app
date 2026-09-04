@@ -4,9 +4,9 @@ from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.enum.section import WD_SECTION_START, WD_ORIENTATION
-from docx.oxml import parse_xml
-from docx.oxml.ns import nsdecls
+from docx.enum.section import WD_ORIENTATION
+from docx.oxml import parse_xml, OxmlElement
+from docx.oxml.ns import nsdecls, qn
 import io
 from datetime import datetime, date
 
@@ -17,7 +17,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. ตกแต่งด้วย Custom CSS
+# 2. Custom CSS
 st.markdown("""
     <style>
     .main { background-color: #0f172a; }
@@ -42,13 +42,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ฟังก์ชั่นใส่สีพื้นหลังเซลล์ Word
 def set_cell_background(cell, hex_color):
     tcPr = cell._tc.get_or_add_tcPr()
     shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{hex_color}"/>')
     tcPr.append(shd)
 
-# ฟังก์ชั่นใส่เส้นขอบตาราง Word
 def set_table_borders(table):
     tblPr = table._tbl.tblPr
     borders = parse_xml(
@@ -63,7 +61,6 @@ def set_table_borders(table):
     )
     tblPr.append(borders)
 
-# ฟังก์ชั่นแปลงวันที่เป็น พ.ศ. (เช่น 4/9/2569)
 def format_date_thai(val):
     if not val or str(val).strip() in ["-", "None", ""]:
         return "-"
@@ -83,11 +80,44 @@ def format_date_thai(val):
         
     return val_str
 
+# ฟังก์ชั่นใส่สูตรคำนวณใน Word (Formula Field)
+def add_word_field_formula(cell, formula_str, default_value_str, is_bold=False, font_size=14):
+    p = cell.paragraphs[0]
+    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    
+    # สร้าง Field คำนวณสูตร Word
+    fldSimple = OxmlElement('w:fldSimple')
+    fldSimple.set(qn('w:instr'), f'{formula_str} \\# "#,##0.00"')
+    
+    r = OxmlElement('w:r')
+    rPr = OxmlElement('w:rPr')
+    
+    rFonts = OxmlElement('w:rFonts')
+    rFonts.set(qn('w:ascii'), 'TH SarabunPSK')
+    rFonts.set(qn('w:hAnsi'), 'TH SarabunPSK')
+    rPr.append(rFonts)
+    
+    sz = OxmlElement('w:sz')
+    sz.set(qn('w:val'), str(font_size * 2))
+    rPr.append(sz)
+    
+    if is_bold:
+        rPr.append(OxmlElement('w:b'))
+        
+    r.append(rPr)
+    
+    t = OxmlElement('w:t')
+    t.text = default_value_str
+    r.append(t)
+    
+    fldSimple.append(r)
+    p._p.append(fldSimple)
+
 # --- ส่วนหัวของเว็บ ---
 st.markdown("""
     <div class="header-card">
-        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด (รูปแบบแนวนอน)</div>
-        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word ใบวางบิลแนวนอน อ่านง่าย ตารางกว้างขวาง</div>
+        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด (สูตรคำนวณอัตโนมัติใน Word)</div>
+        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word แนวนอน - แก้ไข บาท/กก. ใน Word แล้วกด F9 คำนวณใหม่ได้ทันที!</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -109,7 +139,6 @@ if uploaded_file is not None:
         actual_sheet_name = sheet_options[selected_display]
         ws = wb[actual_sheet_name]
         
-        # ค้นหาแถวที่เป็นหัวตาราง
         header_row = 1
         for r in range(1, min(15, ws.max_row + 1)):
             row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(1, ws.max_column + 1)]
@@ -127,7 +156,6 @@ if uploaded_file is not None:
             
         header_options = list(headers_found.keys())
         
-        # ฟังก์ชั่นค้นหาคอลัมน์อัตโนมัติ
         def find_best_column(exact_terms, sub_terms):
             for k in header_options:
                 col_title = k.split(":", 1)[1].strip() if ":" in k else k
@@ -161,7 +189,6 @@ if uploaded_file is not None:
         idx_w_end = headers_found[default_w_end]
         idx_price = headers_found[default_price]
 
-        # อ่านข้อมูลจาก Excel
         items_data = []
         last_valid_date = "-"
         
@@ -260,17 +287,16 @@ if uploaded_file is not None:
             
             st.write("---")
             
-            if st.button("🚀 สร้างไฟล์ Word ใบวางบิลแนวนอน (.docx)", type="primary", use_container_width=True):
+            if st.button("🚀 สร้างไฟล์ Word ใบวางบิลสูตรคำนวณ (.docx)", type="primary", use_container_width=True):
                 if len(selected_indices) == 0:
                     st.error("กรุณาเลือกอย่างน้อย 1 รายการก่อนสร้างเอกสาร")
                 else:
                     doc = Document()
                     
-                    # ตั้งค่าหน้ากระดาษเป็น "แนวนอน (Landscape)"
                     section = doc.sections[0]
                     section.orientation = WD_ORIENTATION.LANDSCAPE
-                    section.page_width = Inches(11.69)   # กว้าง 11.69 นิ้ว (A4 แนวนอน)
-                    section.page_height = Inches(8.27)    # สูง 8.27 นิ้ว
+                    section.page_width = Inches(11.69)
+                    section.page_height = Inches(8.27)
                     section.top_margin = Inches(0.5)
                     section.bottom_margin = Inches(0.5)
                     section.left_margin = Inches(0.5)
@@ -317,6 +343,7 @@ if uploaded_file is not None:
                     
                     for idx, item in enumerate(selected_indices, 1):
                         row_cells = table.rows[idx].cells
+                        row_num = idx + 1 # Row index in Word table (1-based, Row 1 is header)
                         
                         w_start = item['weight_start'] if isinstance(item['weight_start'], (int, float)) else 0
                         w_end = item['weight_end'] if isinstance(item['weight_end'], (int, float)) else 0
@@ -343,16 +370,21 @@ if uploaded_file is not None:
                             item['date_down'],
                             w_start_str,
                             w_end_str,
-                            f"{price_kg:.2f}",
-                            shipping_str
+                            f"{price_kg:.2f}"
                         ]
                         
+                        # ใส่ข้อมูลคอลัมน์ 1 - 10
                         for c_idx, val in enumerate(row_data):
                             p = row_cells[c_idx].paragraphs[0]
-                            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if c_idx in [7, 8, 9, 10] else (WD_ALIGN_PARAGRAPH.CENTER if c_idx in [0, 1, 3, 6] else WD_ALIGN_PARAGRAPH.LEFT)
+                            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if c_idx in [7, 8, 9] else (WD_ALIGN_PARAGRAPH.CENTER if c_idx in [0, 1, 3, 6] else WD_ALIGN_PARAGRAPH.LEFT)
                             r = p.add_run(val)
                             r.font.name = "TH SarabunPSK"
                             r.font.size = Pt(14)
+                            
+                        # คอลัมน์ที่ 11 (ค่าขนส่ง): ใส่สูตรคำนวณ Word `=I{row_num}*J{row_num}` หรือ `=H{row_num}*J{row_num}`
+                        col_w_letter = 'I' if w_end > 0 else 'H'
+                        word_formula = f"={col_w_letter}{row_num}*J{row_num}"
+                        add_word_field_formula(row_cells[10], word_formula, shipping_str, is_bold=False, font_size=14)
 
                     # 3. แถวรวม
                     row_sum = table.rows[-2].cells
@@ -377,12 +409,8 @@ if uploaded_file is not None:
                     r_w_e.font.bold = True
                     r_w_e.font.size = Pt(14)
                     
-                    p_ship = row_sum[10].paragraphs[0]
-                    p_ship.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    r_ship = p_ship.add_run(f"{sum_total_shipping:,.2f}")
-                    r_ship.font.name = "TH SarabunPSK"
-                    r_ship.font.bold = True
-                    r_ship.font.size = Pt(14)
+                    # รวมค่าขนส่ง (สูตร =SUM(ABOVE))
+                    add_word_field_formula(row_sum[10], "=SUM(ABOVE)", f"{sum_total_shipping:,.2f}", is_bold=True, font_size=14)
 
                     # 4. แถวยอดสุทธิ
                     row_net = table.rows[-1].cells
@@ -397,12 +425,8 @@ if uploaded_file is not None:
                     r_net_lbl.font.bold = True
                     r_net_lbl.font.size = Pt(14)
                     
-                    p_net_val = row_net[10].paragraphs[0]
-                    p_net_val.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    r_net_val = p_net_val.add_run(f"{sum_total_shipping:,.2f}")
-                    r_net_val.font.name = "TH SarabunPSK"
-                    r_net_val.font.bold = True
-                    r_net_val.font.size = Pt(14)
+                    # ยอดสุทธิ
+                    add_word_field_formula(row_net[10], "=K" + str(total_rows - 1), f"{sum_total_shipping:,.2f}", is_bold=True, font_size=14)
 
                     # 5. รายละเอียดการชำระเงิน
                     doc.add_paragraph().paragraph_format.space_after = Pt(12)
@@ -439,7 +463,7 @@ if uploaded_file is not None:
                     doc.save(bio)
                     bio.seek(0)
                     
-                    st.success(f"สร้างใบวางบิลแนวนอนสำเร็จ! รวม {len(selected_indices)} รายการ")
+                    st.success(f"สร้างใบวางบิลใส่สูตร Word สำเร็จ! รวม {len(selected_indices)} รายการ")
                     st.download_button(
                         label="📥 กดดาวน์โหลดไฟล์ใบวางบิล (.docx)",
                         data=bio,
