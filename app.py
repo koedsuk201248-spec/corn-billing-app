@@ -10,7 +10,7 @@ from datetime import datetime
 
 # 1. ตั้งค่าหน้าเว็บ Streamlit
 st.set_page_config(
-    page_title="ระบบสร้างใบวางบิลอัจฉริยะ", 
+    page_title="ระบบสร้างใบวางบิลข้าวโพด", 
     page_icon="🌽", 
     layout="wide"
 )
@@ -76,8 +76,8 @@ def parse_date_for_sort(date_str):
 # --- ส่วนหัวของเว็บ ---
 st.markdown("""
     <div class="header-card">
-        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด (รองรับทุกโครงสร้าง Excel)</div>
-        <div class="header-subtitle">แปลงข้อมูลตาราง Excel เป็นเอกสาร Word อัตโนมัติ ยืดหยุ่น รองรับไฟล์ทุกรูปแบบ</div>
+        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด (เจ้นัชชา)</div>
+        <div class="header-subtitle">จัดการและแปลงข้อมูลไฟล์ Excel ส่งออกเป็นเอกสาร Word พร้อมใช้งานอย่างรวดเร็ว</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -86,7 +86,7 @@ with st.sidebar:
     st.header("⚙️ เมนูตั้งค่า")
     uploaded_file = st.file_uploader("1. อัปโหลดไฟล์ Excel", type=["xlsx"])
     st.markdown("---")
-    st.caption("ระบบอ่านหัวตารางอัตโนมัติ")
+    st.caption("ระบบอ่านข้อมูลอัตโนมัติ")
 
 if uploaded_file is not None:
     wb = openpyxl.load_workbook(uploaded_file, data_only=True)
@@ -133,37 +133,21 @@ if uploaded_file is not None:
                 return header_keys[fallback_idx - 1]
             return header_keys[0]
 
-        # 2. เมนูตั้งค่าจับคู่คอลัมน์
-        with st.expander("🛠️ ตรวจสอบการจับคู่คอลัมน์ (คลิกเพื่อแก้ไขหากข้อมูลไม่ตรง)", expanded=False):
-            st.info("ระบบจับคู่หัวตารางให้อัตโนมัติ หากข้อมูลขึ้นไม่ตรง สามารถปรับเปลี่ยนคอลัมน์ได้จากตัวเลือกด้านล่างครับ")
-            c1, c2, c3, c4 = st.columns(4)
-            
-            default_date = find_exact_col(["วัน/เดือน/ปี ขึ้นสินค้า", "วันที่ขึ้นสินค้า", "วัน/เดือน/ปี", "วันที่"], 2)
-            default_plate = find_exact_col(["ทะเบียน"], 4)
-            default_dest = find_exact_col(["ปลายทาง"], 8)
-            default_price = find_exact_col(["ราคา"], 13)
-            
-            sel_date_up = c1.selectbox("คอลัมน์ วันที่ขึ้นสินค้า:", header_keys, index=header_keys.index(default_date))
-            sel_plate = c2.selectbox("คอลัมน์ ทะเบียนรถ:", header_keys, index=header_keys.index(default_plate))
-            sel_dest = c3.selectbox("คอลัมน์ ปลายทาง:", header_keys, index=header_keys.index(default_dest))
-            sel_price = c4.selectbox("คอลัมน์ ราคา:", header_keys, index=header_keys.index(default_price))
-            
-            c5, c6, c7, _ = st.columns(4)
-            default_w_start = find_exact_col(["นน.ต้นทาง", "น้ำหนักต้นทาง"], 10)
-            default_w_end = find_exact_col(["นน.ปลายทาง", "น้ำหนักปลายทาง"], 11)
-            default_w_diff = find_exact_col(["ส่วนต่างน้ำหนัก", "ส่วนต่าง"], 12)
-            
-            sel_w_start = c5.selectbox("คอลัมน์ นน.ต้นทาง:", header_keys, index=header_keys.index(default_w_start))
-            sel_w_end = c6.selectbox("คอลัมน์ นน.ปลายทาง:", header_keys, index=header_keys.index(default_w_end))
-            sel_w_diff = c7.selectbox("คอลัมน์ ส่วนต่างน้ำหนัก:", header_keys, index=header_keys.index(default_w_diff))
+        default_date = find_exact_col(["วัน/เดือน/ปี ขึ้นสินค้า", "วันที่ขึ้นสินค้า", "วัน/เดือน/ปี", "วันที่"], 2)
+        default_plate = find_exact_col(["ทะเบียน"], 4)
+        default_dest = find_exact_col(["ปลายทาง"], 8)
+        default_price = find_exact_col(["ราคา"], 13)
+        default_w_start = find_exact_col(["นน.ต้นทาง", "น้ำหนักต้นทาง"], 10)
+        default_w_end = find_exact_col(["นน.ปลายทาง", "น้ำหนักปลายทาง"], 11)
+        default_w_diff = find_exact_col(["ส่วนต่างน้ำหนัก", "ส่วนต่าง"], 12)
 
-        idx_date_up = headers_found[sel_date_up]
-        idx_plate = headers_found[sel_plate]
-        idx_dest = headers_found[sel_dest]
-        idx_price = headers_found[sel_price]
-        idx_w_start = headers_found[sel_w_start]
-        idx_w_end = headers_found[sel_w_end]
-        idx_w_diff = headers_found[sel_w_diff]
+        idx_date_up = headers_found[default_date]
+        idx_plate = headers_found[default_plate]
+        idx_dest = headers_found[default_dest]
+        idx_price = headers_found[default_price]
+        idx_w_start = headers_found[default_w_start]
+        idx_w_end = headers_found[default_w_end]
+        idx_w_diff = headers_found[default_w_diff]
 
         # 3. อ่านข้อมูลจากตาราง (พร้อมระบบเติมวันที่อัตโนมัติหากช่องว่าง)
         items_data = []
@@ -176,7 +160,6 @@ if uploaded_file is not None:
                 raw_date = ws.cell(row=row, column=idx_date_up).value
                 formatted_d = format_date(raw_date)
                 
-                # ถ้าแถวนี้มีวันที่ให้จำไว้ ถ้าแถวนี้ไม่มีให้ใช้วันที่ของแถวล่าสุด
                 if formatted_d and formatted_d != "-":
                     last_valid_date = formatted_d
                 
@@ -202,7 +185,6 @@ if uploaded_file is not None:
         if len(items_data) == 0:
             st.warning(f"⚠️ ไม่พบข้อมูลรายการในชีท **{selected_display}**")
         else:
-            # ดึงวันที่ทั้งหมดแล้วเรียงตามปฏิทินจริง
             unique_dates = list(set([item["date_up"] for item in items_data if item["date_up"] != "-"]))
             sorted_dates = sorted(unique_dates, key=parse_date_for_sort)
             date_filter_options = ["แสดงทั้งหมด"] + sorted_dates
