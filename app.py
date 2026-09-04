@@ -46,12 +46,28 @@ def add_highlight(run):
     highlight.set(qn('w:val'), 'yellow')
     rPr.append(highlight)
 
+# ฟังก์ชั่นจัดรูปแบบวันที่ + แก้ไขปี 1969 อัตโนมัติ
 def format_date(val):
+    if not val:
+        return "-"
+        
     if isinstance(val, datetime):
-        return val.strftime("%d/%m/%Y")
-    elif val:
-        return str(val).split()[0]
-    return "-"
+        year = val.year
+        # แก้ไขกรณีปีถูกตีความผิดเป็น 1969 (จาก พ.ศ. 2569)
+        if year == 1969:
+            year = 2026
+        elif year > 2500:
+            year = year - 543
+        return val.strftime(f"%d/%m/{year}")
+    
+    val_str = str(val).strip().split()[0]
+    # ป้องกันกรณีเป็นข้อความที่ลงท้ายด้วย 1969
+    if "1969" in val_str:
+        val_str = val_str.replace("1969", "2026")
+    elif "/69" in val_str:
+        val_str = val_str.replace("/69", "/2026")
+        
+    return val_str
 
 # --- ส่วนหัวของเว็บ ---
 st.markdown("""
@@ -102,17 +118,14 @@ if uploaded_file is not None:
         
         # ฟังก์ชั่นจับคู่คอลัมน์แบบแม่นยำ
         def find_exact_col(exact_keywords, fallback_idx):
-            # 1. ลองค้นคำตรงเป๊ะ
             for kw in exact_keywords:
                 for k in header_keys:
                     if k == kw:
                         return k
-            # 2. ลองค้นคำที่มีส่วนประกอบ
             for kw in exact_keywords:
                 for k in header_keys:
                     if kw in k and "ส่วนต่าง" not in k and "จำนวน" not in k:
                         return k
-            # 3. ใช้ตำแหน่ง fallback
             if len(header_keys) >= fallback_idx:
                 return header_keys[fallback_idx - 1]
             return header_keys[0]
