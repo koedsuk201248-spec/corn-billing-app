@@ -86,7 +86,7 @@ def format_date_thai(val):
 st.markdown("""
     <div class="header-card">
         <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด (แม่นยำทุกไฟล์ Excel)</div>
-        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word ตรงตามแบบมาตรฐาน พร้อมระบบจับคู่คอลัมน์อัตโนมัติ</div>
+        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word ตรงตามแบบมาตรฐานทันที</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -126,7 +126,7 @@ if uploaded_file is not None:
             
         header_options = list(headers_found.keys())
         
-        # ฟังก์ชั่นค้นหาคอลัมน์ที่ตรงกัน
+        # ฟังก์ชั่นค้นหาคอลัมน์ที่ตรงกันอัตโนมัติหลังบ้าน
         def find_best_column(exact_terms, sub_terms):
             for k in header_options:
                 col_title = k.split(":", 1)[1].strip() if ":" in k else k
@@ -150,31 +150,15 @@ if uploaded_file is not None:
         default_w_end = find_best_column(["นน.ปลายทาง", "น้ำหนักปลายทาง"], ["ปลายทาง"])
         default_price = find_best_column(["ราคา"], ["ราคา", "บาท"])
 
-        # เมนูให้ผู้ใช้สามารถตรวจสอบ/ปรับเปลี่ยนคอลัมน์ได้เอง
-        with st.expander("🛠️ ตรวจสอบการจับคู่คอลัมน์ Excel (เปิดดูถ้าอยากปรับช่องข้อมูล)", expanded=False):
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                sel_plate = st.selectbox("ทะเบียนรถ:", header_options, index=header_options.index(default_plate))
-                sel_prod = st.selectbox("สินค้า:", header_options, index=header_options.index(default_prod))
-                sel_price = st.selectbox("ราคา (บาท/กก. หรือ บาท/ตัน):", header_options, index=header_options.index(default_price))
-            with c2:
-                sel_date_up = st.selectbox("วันที่ขึ้นสินค้า:", header_options, index=header_options.index(default_date_up))
-                sel_origin = st.selectbox("สถานที่ขึ้น (ต้นทาง):", header_options, index=header_options.index(default_origin))
-                sel_w_start = st.selectbox("นน. ต้นทาง:", header_options, index=header_options.index(default_w_start))
-            with c3:
-                sel_date_down = st.selectbox("วันที่ลงสินค้า:", header_options, index=header_options.index(default_date_down))
-                sel_dest = st.selectbox("สถานที่ลง (ปลายทาง):", header_options, index=header_options.index(default_dest))
-                sel_w_end = st.selectbox("นน. ปลายทาง:", header_options, index=header_options.index(default_w_end))
-
-        idx_plate = headers_found[sel_plate]
-        idx_prod = headers_found[sel_prod]
-        idx_date_up = headers_found[sel_date_up]
-        idx_date_down = headers_found[sel_date_down]
-        idx_origin = headers_found[sel_origin]
-        idx_dest = headers_found[sel_dest]
-        idx_w_start = headers_found[sel_w_start]
-        idx_w_end = headers_found[sel_w_end]
-        idx_price = headers_found[sel_price]
+        idx_plate = headers_found[default_plate]
+        idx_prod = headers_found[default_prod]
+        idx_date_up = headers_found[default_date_up]
+        idx_date_down = headers_found[default_date_down]
+        idx_origin = headers_found[default_origin]
+        idx_dest = headers_found[default_dest]
+        idx_w_start = headers_found[default_w_start]
+        idx_w_end = headers_found[default_w_end]
+        idx_price = headers_found[default_price]
 
         # อ่านข้อมูลจาก Excel
         items_data = []
@@ -212,7 +196,7 @@ if uploaded_file is not None:
                     except:
                         price_val = 0.62
                         
-                if price_val > 100: # ถ้าเป็นราคาต่อตัน ให้ทอนเป็นบาทต่อ กก.
+                if price_val > 100:
                     price_val = price_val / 1000.0
 
                 items_data.append({
@@ -228,7 +212,7 @@ if uploaded_file is not None:
                 })
 
         if len(items_data) == 0:
-            st.warning(f"⚠️ ไม่พบข้อมูลรายการในชีท **{selected_display}** กรุณาตรวจสอบการเลือกคอลัมน์ทะเบียนรถ")
+            st.warning(f"⚠️ ไม่พบข้อมูลรายการในชีท **{selected_display}**")
         else:
             unique_dates = list(set([item["date_up"] for item in items_data if item["date_up"] != "-"]))
             date_filter_options = ["แสดงทั้งหมด"] + unique_dates
@@ -306,7 +290,7 @@ if uploaded_file is not None:
                     r_date.font.size = Pt(18)
                     r_date.font.bold = True
                     
-                    # 2. ตารางหลัก (11 คอลัมน์)
+                    # 2. ตารางหลัก
                     total_rows = len(selected_indices) + 3
                     table = doc.add_table(rows=total_rows, cols=11)
                     table.alignment = WD_TABLE_ALIGNMENT.CENTER
