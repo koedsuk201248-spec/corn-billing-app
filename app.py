@@ -115,7 +115,7 @@ def add_word_field_formula(cell, formula_str, default_value_str, is_bold=False, 
 st.markdown("""
     <div class="header-card">
         <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด</div>
-        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word แนวนอน - ตารางชำระเงินขนาดพอดีสายตา</div>
+        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word แนวนอน - ตารางรายละเอียดการชำระเงินสั้นพอดีตัวหนังสือ</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -422,7 +422,7 @@ if uploaded_file is not None:
                     
                     add_word_field_formula(row_net[10], "=K" + str(total_rows - 1), f"{sum_total_shipping:,.2f}", is_bold=True, font_size=14)
 
-                    # 5. รายละเอียดการชำระเงิน (ตารางสั้นกระชับ กำหนดขนาดแน่นอน)
+                    # 5. รายละเอียดการชำระเงิน (ปรับขนาดตารางให้สั้นและพอดีคำ)
                     doc.add_paragraph().paragraph_format.space_after = Pt(12)
                     
                     p_pay_title = doc.add_paragraph()
@@ -436,14 +436,17 @@ if uploaded_file is not None:
                     pay_table.alignment = WD_TABLE_ALIGNMENT.LEFT
                     set_table_borders(pay_table)
                     
+                    # ปิดระบบยืดตารางอัตโนมัติ เพื่อให้ตารางสั้นตามขนาดที่กำหนด
+                    pay_table.autofit = False
+                    
                     pay_data = [
                         ("ชื่อบัญชี :", "หจก.ทีเอ็นพี โลจิสติกส์"),
                         ("ธนาคาร :", "กสิกรไทย"),
                         ("เลขที่บัญชี :", "097-1-01627-2")
                     ]
                     
-                    # กำหนดความกว้างคอลัมน์ให้กระชับ
-                    col_widths = [Inches(2.0), Inches(4.5)]
+                    # กำหนดความกว้างคอลัมน์แบบกระชับ (1.2 นิ้ว และ 3.0 นิ้ว)
+                    col_widths = [Inches(1.2), Inches(3.0)]
                     
                     for r_idx, (label, val) in enumerate(pay_data):
                         row_cells = pay_table.rows[r_idx].cells
