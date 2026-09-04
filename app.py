@@ -82,51 +82,64 @@ if uploaded_file is not None:
         ws = wb[actual_sheet_name]
         
         # 1. ค้นหาแถวที่เป็นหัวตาราง (Header Row)
-        header_row = -1
-        col_map = {}
-        
-        for r in range(1, min(20, ws.max_row + 1)):
+        header_row = 4
+        for r in range(1, min(15, ws.max_row + 1)):
             row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(1, ws.max_column + 1)]
-            # ตรวจหาคอลัมน์สำคัญ
-            for c_idx, val in enumerate(row_vals, 1):
-                if "ทะเบียน" in val:
-                    header_row = r
-                if val:
-                    col_map[val] = c_idx
-            if header_row != -1:
+            if any("ทะเบียน" in val for val in row_vals):
+                header_row = r
                 break
                 
-        if header_row == -1:
-            header_row = 4 # Default แถว 4
-            
         # สร้างรายชื่อคอลัมน์ทั้งหมดที่พบในแถวหัวตาราง
         headers_found = {}
         for c in range(1, ws.max_column + 1):
-            val = str(ws.cell(row=header_row, column=c).value or f"คอลัมน์ {c}").strip()
-            headers_found[val] = c
+            val = str(ws.cell(row=header_row, column=c).value or "").strip()
+            if val:
+                headers_found[val] = c
+            else:
+                headers_found[f"คอลัมน์ {c}"] = c
             
         header_keys = list(headers_found.keys())
         
-        # ฟังก์ชั่นช่วยเดาหาคอลัมน์อัตโนมัติ
-        def guess_col(keywords, default_col_idx):
-            for k, idx in headers_found.items():
-                if any(kw in k for kw in keywords):
-                    return k
-            return header_keys[default_col_idx - 1] if len(header_keys) >= default_col_idx else header_keys[0]
+        # ฟังก์ชั่นจับคู่คอลัมน์แบบแม่นยำ
+        def find_exact_col(exact_keywords, fallback_idx):
+            # 1. ลองค้นคำตรงเป๊ะ
+            for kw in exact_keywords:
+                for k in header_keys:
+                    if k == kw:
+                        return k
+            # 2. ลองค้นคำที่มีส่วนประกอบ
+            for kw in exact_keywords:
+                for k in header_keys:
+                    if kw in k and "ส่วนต่าง" not in k and "จำนวน" not in k:
+                        return k
+            # 3. ใช้ตำแหน่ง fallback
+            if len(header_keys) >= fallback_idx:
+                return header_keys[fallback_idx - 1]
+            return header_keys[0]
 
-        # 2. เมนูตั้งค่าจับคู่คอลัมน์ (เผื่อผู้ใช้ต้องการเปลี่ยนเอง)
+        # 2. เมนูตั้งค่าจับคู่คอลัมน์
         with st.expander("🛠️ ตรวจสอบการจับคู่คอลัมน์ (คลิกเพื่อแก้ไขหากข้อมูลไม่ตรง)", expanded=False):
-            st.info("ระบบเดาหัวตารางให้อัตโนมัติ หากข้อมูลขึ้นไม่ตรง สามารถปรับเปลี่ยนคอลัมน์ได้จากตัวเลือกด้านล่างครับ")
+            st.info("ระบบจับคู่หัวตารางให้อัตโนมัติ หากข้อมูลขึ้นไม่ตรง สามารถปรับเปลี่ยนคอลัมน์ได้จากตัวเลือกด้านล่างครับ")
             c1, c2, c3, c4 = st.columns(4)
-            sel_date_up = c1.selectbox("คอลัมน์ วันที่ขึ้นสินค้า:", header_keys, index=header_keys.index(guess_col(["ขึ้นสินค้า", "วันที่ขึ้น"], 2)))
-            sel_plate = c2.selectbox("คอลัมน์ ทะเบียนรถ:", header_keys, index=header_keys.index(guess_col(["ทะเบียน"], 4)))
-            sel_dest = c3.selectbox("คอลัมน์ ปลายทาง:", header_keys, index=header_keys.index(guess_col(["ปลายทาง"], 8)))
-            sel_price = c4.selectbox("คอลัมน์ ราคา:", header_keys, index=header_keys.index(guess_col(["ราคา"], 13)))
+            
+            default_date = find_exact_col(["วัน/เดือน/ปี ขึ้นสินค้า", "วันที่ขึ้นสินค้า", "วันที่"], 2)
+            default_plate = find_exact_col(["ทะเบียน"], 4)
+            default_dest = find_exact_col(["ปลายทาง"], 8)
+            default_price = find_exact_col(["ราคา"], 13)
+            
+            sel_date_up = c1.selectbox("คอลัมน์ วันที่ขึ้นสินค้า:", header_keys, index=header_keys.index(default_date))
+            sel_plate = c2.selectbox("คอลัมน์ ทะเบียนรถ:", header_keys, index=header_keys.index(default_plate))
+            sel_dest = c3.selectbox("คอลัมน์ ปลายทาง:", header_keys, index=header_keys.index(default_dest))
+            sel_price = c4.selectbox("คอลัมน์ ราคา:", header_keys, index=header_keys.index(default_price))
             
             c5, c6, c7, _ = st.columns(4)
-            sel_w_start = c5.selectbox("คอลัมน์ นน.ต้นทาง:", header_keys, index=header_keys.index(guess_col(["ต้นทาง", "นน.ต้นทาง"], 10)))
-            sel_w_end = c6.selectbox("คอลัมน์ นน.ปลายทาง:", header_keys, index=header_keys.index(guess_col(["ปลายทาง", "นน.ปลายทาง"], 11)))
-            sel_w_diff = c7.selectbox("คอลัมน์ ส่วนต่างน้ำหนัก:", header_keys, index=header_keys.index(guess_col(["ส่วนต่าง"], 12)))
+            default_w_start = find_exact_col(["นน.ต้นทาง", "น้ำหนักต้นทาง"], 10)
+            default_w_end = find_exact_col(["นน.ปลายทาง", "น้ำหนักปลายทาง"], 11)
+            default_w_diff = find_exact_col(["ส่วนต่างน้ำหนัก", "ส่วนต่าง"], 12)
+            
+            sel_w_start = c5.selectbox("คอลัมน์ นน.ต้นทาง:", header_keys, index=header_keys.index(default_w_start))
+            sel_w_end = c6.selectbox("คอลัมน์ นน.ปลายทาง:", header_keys, index=header_keys.index(default_w_end))
+            sel_w_diff = c7.selectbox("คอลัมน์ ส่วนต่างน้ำหนัก:", header_keys, index=header_keys.index(default_w_diff))
 
         idx_date_up = headers_found[sel_date_up]
         idx_plate = headers_found[sel_plate]
