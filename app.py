@@ -4,6 +4,7 @@ from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.section import WD_SECTION_START, WD_ORIENTATION
 from docx.oxml import parse_xml
 from docx.oxml.ns import nsdecls
 import io
@@ -85,8 +86,8 @@ def format_date_thai(val):
 # --- ส่วนหัวของเว็บ ---
 st.markdown("""
     <div class="header-card">
-        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด (แม่นยำทุกไฟล์ Excel)</div>
-        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word ตรงตามแบบมาตรฐานทันที</div>
+        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด (รูปแบบแนวนอน)</div>
+        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word ใบวางบิลแนวนอน อ่านง่าย ตารางกว้างขวาง</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -126,7 +127,7 @@ if uploaded_file is not None:
             
         header_options = list(headers_found.keys())
         
-        # ฟังก์ชั่นค้นหาคอลัมน์ที่ตรงกันอัตโนมัติหลังบ้าน
+        # ฟังก์ชั่นค้นหาคอลัมน์อัตโนมัติ
         def find_best_column(exact_terms, sub_terms):
             for k in header_options:
                 col_title = k.split(":", 1)[1].strip() if ":" in k else k
@@ -259,19 +260,21 @@ if uploaded_file is not None:
             
             st.write("---")
             
-            if st.button("🚀 สร้างไฟล์ Word ใบวางบิล (.docx)", type="primary", use_container_width=True):
+            if st.button("🚀 สร้างไฟล์ Word ใบวางบิลแนวนอน (.docx)", type="primary", use_container_width=True):
                 if len(selected_indices) == 0:
                     st.error("กรุณาเลือกอย่างน้อย 1 รายการก่อนสร้างเอกสาร")
                 else:
                     doc = Document()
                     
-                    for section in doc.sections:
-                        section.page_width = Inches(8.27)
-                        section.page_height = Inches(11.69)
-                        section.top_margin = Inches(0.5)
-                        section.bottom_margin = Inches(0.5)
-                        section.left_margin = Inches(0.5)
-                        section.right_margin = Inches(0.5)
+                    # ตั้งค่าหน้ากระดาษเป็น "แนวนอน (Landscape)"
+                    section = doc.sections[0]
+                    section.orientation = WD_ORIENTATION.LANDSCAPE
+                    section.page_width = Inches(11.69)   # กว้าง 11.69 นิ้ว (A4 แนวนอน)
+                    section.page_height = Inches(8.27)    # สูง 8.27 นิ้ว
+                    section.top_margin = Inches(0.5)
+                    section.bottom_margin = Inches(0.5)
+                    section.left_margin = Inches(0.5)
+                    section.right_margin = Inches(0.5)
                         
                     # 1. หัวเอกสาร
                     p_title = doc.add_paragraph()
@@ -436,7 +439,7 @@ if uploaded_file is not None:
                     doc.save(bio)
                     bio.seek(0)
                     
-                    st.success(f"สร้างใบวางบิลสำเร็จ! รวม {len(selected_indices)} รายการ")
+                    st.success(f"สร้างใบวางบิลแนวนอนสำเร็จ! รวม {len(selected_indices)} รายการ")
                     st.download_button(
                         label="📥 กดดาวน์โหลดไฟล์ใบวางบิล (.docx)",
                         data=bio,
