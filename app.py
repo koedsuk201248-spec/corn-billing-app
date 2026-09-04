@@ -7,7 +7,7 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml import parse_xml, OxmlElement
 from docx.oxml.ns import nsdecls, qn
 import io
-from datetime import datetime
+from datetime import datetime, date
 
 # 1. ตั้งค่าหน้าเว็บ Streamlit
 st.set_page_config(
@@ -52,12 +52,12 @@ def set_table_borders(table):
     tblPr = table._tbl.tblPr
     borders = parse_xml(
         f'<w:tblBorders {nsdecls("w")}>\n'
-        f'  <w:top w:val="dashed" w:sz="4" w:space="0" w:color="A0A0A0"/>\n'
-        f'  <w:bottom w:val="dashed" w:sz="4" w:space="0" w:color="A0A0A0"/>\n'
-        f'  <w:insideH w:val="dashed" w:sz="4" w:space="0" w:color="A0A0A0"/>\n'
-        f'  <w:insideV w:val="dashed" w:sz="4" w:space="0" w:color="A0A0A0"/>\n'
-        f'  <w:left w:val="dashed" w:sz="4" w:space="0" w:color="A0A0A0"/>\n'
-        f'  <w:right w:val="dashed" w:sz="4" w:space="0" w:color="A0A0A0"/>\n'
+        f'  <w:top w:val="single" w:sz="4" w:space="0" w:color="A0A0A0"/>\n'
+        f'  <w:bottom w:val="single" w:sz="4" w:space="0" w:color="A0A0A0"/>\n'
+        f'  <w:insideH w:val="single" w:sz="4" w:space="0" w:color="A0A0A0"/>\n'
+        f'  <w:insideV w:val="single" w:sz="4" w:space="0" w:color="A0A0A0"/>\n'
+        f'  <w:left w:val="single" w:sz="4" w:space="0" w:color="A0A0A0"/>\n'
+        f'  <w:right w:val="single" w:sz="4" w:space="0" w:color="A0A0A0"/>\n'
         f'</w:tblBorders>'
     )
     tblPr.append(borders)
@@ -67,7 +67,7 @@ def format_date_thai(val):
     if not val or str(val).strip() in ["-", "None", ""]:
         return "-"
         
-    if isinstance(val, datetime):
+    if isinstance(val, (datetime, date)):
         year = val.year
         if year == 1969 or year < 2000:
             year = 2026
@@ -85,8 +85,8 @@ def format_date_thai(val):
 # --- ส่วนหัวของเว็บ ---
 st.markdown("""
     <div class="header-card">
-        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด (รูปแบบตรงตามตัวอย่าง)</div>
-        <div class="header-subtitle">แปลงข้อมูล Excel ส่งออกเป็นใบวางบิล Word รูปแบบตารางทางการ</div>
+        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด (รูปแบบมาตรฐานแม่สรวย)</div>
+        <div class="header-subtitle">แปลงข้อมูล Excel ส่งออกเป็นใบวางบิล Word พร้อมสีและฟอนต์ตรงตามต้นฉบับ 100%</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -94,6 +94,10 @@ st.markdown("""
 with st.sidebar:
     st.header("⚙️ เมนูตั้งค่า")
     uploaded_file = st.file_uploader("1. อัปโหลดไฟล์ Excel", type=["xlsx"])
+    
+    st.markdown("---")
+    bill_date_input = st.date_input("2. เลือกวันที่ใบวางบิล:", value=date.today())
+    
     st.markdown("---")
     st.caption("ระบบดึงข้อมูลลงตารางให้อัตโนมัติ")
 
@@ -178,7 +182,7 @@ if uploaded_file is not None:
                 if formatted_d_up and formatted_d_up != "-":
                     last_valid_date = formatted_d_up
                 
-                product = ws.cell(row=row, column=idx_prod).value or "ข้าวโพด"
+                product = ws.cell(row=row, column=idx_prod).value or "ข้าวโพดแห้ง"
                 origin = ws.cell(row=row, column=idx_origin).value or selected_display
                 destination = ws.cell(row=row, column=idx_dest).value or "-"
                 
@@ -186,7 +190,7 @@ if uploaded_file is not None:
                 weight_end = ws.cell(row=row, column=idx_w_end).value or 0
                 raw_price = ws.cell(row=row, column=idx_price).value or 0
                 
-                price_val = 0.43
+                price_val = 0.62
                 if isinstance(raw_price, (int, float)):
                     price_val = float(raw_price)
                 elif isinstance(raw_price, str):
@@ -196,7 +200,7 @@ if uploaded_file is not None:
                         if price_val > 100:
                             price_val = price_val / 1000.0
                     except:
-                        price_val = 0.43
+                        price_val = 0.62
 
                 items_data.append({
                     "date_up": last_valid_date,
@@ -272,33 +276,33 @@ if uploaded_file is not None:
                         section.left_margin = Inches(0.5)
                         section.right_margin = Inches(0.5)
                         
-                    # 1. หัวเอกสาร
+                    # 1. หัวเอกสาร (ฟอนต์ TH SarabunPSK 22pt ตัวหนา)
                     p_title = doc.add_paragraph()
                     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    p_title.paragraph_format.space_after = Pt(8)
+                    p_title.paragraph_format.space_after = Pt(4)
                     r_title = p_title.add_run("ใบวางบิล")
                     r_title.font.name = "TH SarabunPSK"
                     r_title.font.size = Pt(22)
                     r_title.font.bold = True
-                    r_title.font.underline = True
                     
-                    now = datetime.now()
-                    today_be_str = f"{now.day}/{now.month}/{now.year + 543}"
+                    # 2. วันที่ (ฟอนต์ TH SarabunPSK 18pt ตัวหนา)
+                    custom_date_be_str = format_date_thai(bill_date_input)
                     p_date = doc.add_paragraph()
                     p_date.paragraph_format.space_after = Pt(12)
-                    r_date = p_date.add_run(f"วันที่: {today_be_str}")
+                    r_date = p_date.add_run(f"วันที่ : {custom_date_be_str}")
                     r_date.font.name = "TH SarabunPSK"
-                    r_date.font.size = Pt(14)
+                    r_date.font.size = Pt(18)
                     r_date.font.bold = True
                     
-                    # 2. ตารางหลัก
+                    # 3. ตารางหลัก
                     total_rows = len(selected_indices) + 3
                     table = doc.add_table(rows=total_rows, cols=11)
                     table.alignment = WD_TABLE_ALIGNMENT.CENTER
                     set_table_borders(table)
                     
-                    headers = ["ลำดับที่", "ทะเบียน", "สินค้า", "วันที่ขึ้น", "สถานที่ขึ้น", "สถานที่ลง", "วันที่ลง", "นน.\nต้นทาง", "นน.\nปลายทาง", "บาท/กก.", "ค่าขนส่ง"]
+                    headers = ["ลำดับ", "ทะเบียน", "สินค้า", "วันที่ขึ้น", "สถานที่ขึ้น", "สถานที่ลง", "วันที่ลง", "นน.\nต้นทาง", "นน.\nปลายทาง", "บาท/กก.", "ค่าขนส่ง"]
                     
+                    # หัวตาราง (พื้นหลังสีเทาน้ำเงิน `#4A607A` ข้อความสีขาว 14pt)
                     hdr_cells = table.rows[0].cells
                     for i, head_text in enumerate(headers):
                         set_cell_background(hdr_cells[i], "4A607A")
@@ -306,8 +310,7 @@ if uploaded_file is not None:
                         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                         r = p.add_run(head_text)
                         r.font.name = "TH SarabunPSK"
-                        r.font.size = Pt(11)
-                        r.font.bold = True
+                        r.font.size = Pt(14)
                         r.font.color.rgb = RGBColor(255, 255, 255)
                         
                     sum_w_start = 0
@@ -351,39 +354,39 @@ if uploaded_file is not None:
                             p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if c_idx in [7, 8, 9, 10] else (WD_ALIGN_PARAGRAPH.CENTER if c_idx in [0, 1, 3, 6] else WD_ALIGN_PARAGRAPH.LEFT)
                             r = p.add_run(val)
                             r.font.name = "TH SarabunPSK"
-                            r.font.size = Pt(11)
+                            r.font.size = Pt(14)
 
-                    # 3. แถวรวม
+                    # 4. แถวรวม (14pt ตัวหนา)
                     row_sum = table.rows[-2].cells
                     p_sum_lbl = row_sum[6].paragraphs[0]
                     p_sum_lbl.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     r_sum_lbl = p_sum_lbl.add_run("รวม")
                     r_sum_lbl.font.name = "TH SarabunPSK"
                     r_sum_lbl.font.bold = True
-                    r_sum_lbl.font.size = Pt(11)
+                    r_sum_lbl.font.size = Pt(14)
                     
                     p_w_s = row_sum[7].paragraphs[0]
                     p_w_s.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     r_w_s = p_w_s.add_run(f"{sum_w_start:,.0f}")
                     r_w_s.font.name = "TH SarabunPSK"
                     r_w_s.font.bold = True
-                    r_w_s.font.size = Pt(11)
+                    r_w_s.font.size = Pt(14)
                     
                     p_w_e = row_sum[8].paragraphs[0]
                     p_w_e.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    r_w_e = p_w_e.add_run(f"{sum_w_end:,.0f}")
+                    r_w_e = p_w_e.add_run(f"{sum_w_end:,.0f}" if sum_w_end > 0 else "0")
                     r_w_e.font.name = "TH SarabunPSK"
                     r_w_e.font.bold = True
-                    r_w_e.font.size = Pt(11)
+                    r_w_e.font.size = Pt(14)
                     
                     p_ship = row_sum[10].paragraphs[0]
                     p_ship.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     r_ship = p_ship.add_run(f"{sum_total_shipping:,.2f}")
                     r_ship.font.name = "TH SarabunPSK"
                     r_ship.font.bold = True
-                    r_ship.font.size = Pt(11)
+                    r_ship.font.size = Pt(14)
 
-                    # 4. แถวยอดสุทธิ
+                    # 5. แถวยอดสุทธิ (ไฮไลต์สีฟ้าอ่อน `#E8EEF8` 14pt ตัวหนา)
                     row_net = table.rows[-1].cells
                     for cell in row_net:
                         set_cell_background(cell, "E8EEF8")
@@ -394,29 +397,29 @@ if uploaded_file is not None:
                     r_net_lbl = p_net_lbl.add_run("ยอดสุทธิ   ")
                     r_net_lbl.font.name = "TH SarabunPSK"
                     r_net_lbl.font.bold = True
-                    r_net_lbl.font.size = Pt(12)
+                    r_net_lbl.font.size = Pt(14)
                     
                     p_net_val = row_net[10].paragraphs[0]
                     p_net_val.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     r_net_val = p_net_val.add_run(f"{sum_total_shipping:,.2f}")
                     r_net_val.font.name = "TH SarabunPSK"
                     r_net_val.font.bold = True
-                    r_net_val.font.size = Pt(12)
+                    r_net_val.font.size = Pt(14)
 
-                    # 5. รายละเอียดการชำระเงิน (อัปเดตข้อมูลบัญชีใหม่)
+                    # 6. รายละเอียดการชำระเงิน (18pt ตัวหนา / ตาราง 16pt)
                     doc.add_paragraph().paragraph_format.space_after = Pt(12)
                     
                     p_pay_title = doc.add_paragraph()
                     p_pay_title.paragraph_format.space_after = Pt(4)
                     r_pay_title = p_pay_title.add_run("รายละเอียดการชำระเงิน")
                     r_pay_title.font.name = "TH SarabunPSK"
-                    r_pay_title.font.size = Pt(13)
+                    r_pay_title.font.size = Pt(18)
                     r_pay_title.font.bold = True
                     
                     pay_table = doc.add_table(rows=3, cols=2)
                     set_table_borders(pay_table)
                     pay_data = [
-                        ("ชื่อบัญชี :", "หจก. ทีเอ็นพี เลขที่ 44 หมู่ที่ 9 ต.ม่วงคำ"),
+                        ("ชื่อบัญชี :", "หจก.ทีเอ็นพี เลขที่ 44 หมู่ที่ 9 ต.ม่วงคำ"),
                         ("ธนาคาร :", "กสิกรไทย"),
                         ("เลขที่บัญชี :", "097-1-01627-2")
                     ]
@@ -427,13 +430,12 @@ if uploaded_file is not None:
                         p_lbl = row_cells[0].paragraphs[0]
                         r_lbl = p_lbl.add_run(label)
                         r_lbl.font.name = "TH SarabunPSK"
-                        r_lbl.font.size = Pt(12)
-                        r_lbl.font.bold = True
+                        r_lbl.font.size = Pt(16)
                         
                         p_val = row_cells[1].paragraphs[0]
                         r_val = p_val.add_run(val)
                         r_val.font.name = "TH SarabunPSK"
-                        r_val.font.size = Pt(12)
+                        r_val.font.size = Pt(16)
                     
                     bio = io.BytesIO()
                     doc.save(bio)
