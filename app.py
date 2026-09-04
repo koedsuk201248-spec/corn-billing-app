@@ -41,11 +41,13 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# ฟังก์ชั่นใส่สีพื้นหลังเซลล์ Word
 def set_cell_background(cell, hex_color):
     tcPr = cell._tc.get_or_add_tcPr()
     shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{hex_color}"/>')
     tcPr.append(shd)
 
+# ฟังก์ชั่นใส่เส้นขอบตาราง Word
 def set_table_borders(table):
     tblPr = table._tbl.tblPr
     borders = parse_xml(
@@ -60,6 +62,7 @@ def set_table_borders(table):
     )
     tblPr.append(borders)
 
+# ฟังก์ชั่นแปลงวันที่เป็น พ.ศ. (เช่น 4/9/2569)
 def format_date_thai(val):
     if not val or str(val).strip() in ["-", "None", ""]:
         return "-"
@@ -82,8 +85,8 @@ def format_date_thai(val):
 # --- ส่วนหัวของเว็บ ---
 st.markdown("""
     <div class="header-card">
-        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด (แก้คอลัมน์สลับตำแหน่ง)</div>
-        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word แม่นยำ ตรวจสอบและเลือกจับคู่คอลัมน์ได้เอง</div>
+        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด (แม่นยำทุกไฟล์ Excel)</div>
+        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word ตรงตามแบบมาตรฐาน พร้อมระบบจับคู่คอลัมน์อัตโนมัติ</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -105,9 +108,9 @@ if uploaded_file is not None:
         actual_sheet_name = sheet_options[selected_display]
         ws = wb[actual_sheet_name]
         
-        # 1. หาแถวหัวตาราง
+        # ค้นหาแถวที่เป็นหัวตาราง
         header_row = 1
-        for r in range(1, min(20, ws.max_row + 1)):
+        for r in range(1, min(15, ws.max_row + 1)):
             row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(1, ws.max_column + 1)]
             if any("ทะเบียน" in val or "สินค้า" in val or "ต้นทาง" in val for val in row_vals):
                 header_row = r
@@ -117,37 +120,51 @@ if uploaded_file is not None:
         for c in range(1, ws.max_column + 1):
             val = str(ws.cell(row=header_row, column=c).value or "").strip()
             if val:
-                headers_found[f"Col {c}: {val}"] = c
+                headers_found[f"คอลัมน์ {c}: {val}"] = c
             else:
-                headers_found[f"Col {c}: [ว่าง]"] = c
+                headers_found[f"คอลัมน์ {c}: [ว่าง]"] = c
             
         header_options = list(headers_found.keys())
         
-        # ฟังก์ชั่นช่วยจับคู่คอลัมน์อัตโนมัติ
-        def auto_match(keywords, default_index):
-            for k, v in headers_found.items():
-                for kw in keywords:
-                    if kw in k.lower():
+        # ฟังก์ชั่นค้นหาคอลัมน์ที่ตรงกัน
+        def find_best_column(exact_terms, sub_terms):
+            for k in header_options:
+                col_title = k.split(":", 1)[1].strip() if ":" in k else k
+                for term in exact_terms:
+                    if col_title == term:
                         return k
-            if default_index < len(header_options):
-                return header_options[default_index]
+            for k in header_options:
+                col_title = k.split(":", 1)[1].strip() if ":" in k else k
+                for term in sub_terms:
+                    if term in col_title and "ส่วนต่าง" not in col_title and "จำนวน" not in col_title and "รับเงิน" not in col_title:
+                        return k
             return header_options[0]
 
-        # 2. เมนูตั้งค่าการจับคู่คอลัมน์ (เพื่อป้องกันข้อมูลมั่ว)
-        with st.expander("🛠️ ตรวจสอบการจับคู่คอลัมน์ (คลิกเพื่อแก้ไข หากข้อมูลใน Word สลับช่อง)", expanded=False):
+        default_date_up = find_best_column(["วัน/เดือน/ปี ขึ้นสินค้า", "วันที่ขึ้นสินค้า", "วันที่ขึ้น"], ["ขึ้น"])
+        default_date_down = find_best_column(["วัน/เดือน/ปี ลงสินค้า", "วันที่ลงสินค้า", "วันที่ลง"], ["ลง"])
+        default_plate = find_best_column(["ทะเบียน", "ทะเบียนรถ"], ["ทะเบียน"])
+        default_prod = find_best_column(["สินค้า"], ["สินค้า"])
+        default_origin = find_best_column(["ต้นทาง", "สถานที่ขึ้น"], ["ต้นทาง"])
+        default_dest = find_best_column(["ปลายทาง", "สถานที่ลง"], ["ปลายทาง"])
+        default_w_start = find_best_column(["นน.ต้นทาง", "น้ำหนักต้นทาง"], ["ต้นทาง"])
+        default_w_end = find_best_column(["นน.ปลายทาง", "น้ำหนักปลายทาง"], ["ปลายทาง"])
+        default_price = find_best_column(["ราคา"], ["ราคา", "บาท"])
+
+        # เมนูให้ผู้ใช้สามารถตรวจสอบ/ปรับเปลี่ยนคอลัมน์ได้เอง
+        with st.expander("🛠️ ตรวจสอบการจับคู่คอลัมน์ Excel (เปิดดูถ้าอยากปรับช่องข้อมูล)", expanded=False):
             c1, c2, c3 = st.columns(3)
             with c1:
-                sel_plate = st.selectbox("ทะเบียนรถ:", header_options, index=header_options.index(auto_match(["ทะเบียน", "รถ"], 3)))
-                sel_prod = st.selectbox("สินค้า:", header_options, index=header_options.index(auto_match(["สินค้า", "รายการ"], 4)))
-                sel_price = st.selectbox("ราคา (บาท/กก./ตัน):", header_options, index=header_options.index(auto_match(["บาท", "ราคา", "กก", "ตัน"], 12)))
+                sel_plate = st.selectbox("ทะเบียนรถ:", header_options, index=header_options.index(default_plate))
+                sel_prod = st.selectbox("สินค้า:", header_options, index=header_options.index(default_prod))
+                sel_price = st.selectbox("ราคา (บาท/กก. หรือ บาท/ตัน):", header_options, index=header_options.index(default_price))
             with c2:
-                sel_date_up = st.selectbox("วันที่ขึ้น:", header_options, index=header_options.index(auto_match(["ขึ้น", "ขึ้นสินค้า", "วันขึ้น"], 1)))
-                sel_origin = st.selectbox("สถานที่ขึ้น:", header_options, index=header_options.index(auto_match(["สถานที่ขึ้น", "ต้นทาง", "รับ"], 6)))
-                sel_w_start = st.selectbox("นน. ต้นทาง:", header_options, index=header_options.index(auto_match(["ต้นทาง", "นน.ต้น"], 9)))
+                sel_date_up = st.selectbox("วันที่ขึ้นสินค้า:", header_options, index=header_options.index(default_date_up))
+                sel_origin = st.selectbox("สถานที่ขึ้น (ต้นทาง):", header_options, index=header_options.index(default_origin))
+                sel_w_start = st.selectbox("นน. ต้นทาง:", header_options, index=header_options.index(default_w_start))
             with c3:
-                sel_date_down = st.selectbox("วันที่ลง:", header_options, index=header_options.index(auto_match(["ลง", "ลงสินค้า", "วันลง"], 2)))
-                sel_dest = st.selectbox("สถานที่ลง:", header_options, index=header_options.index(auto_match(["สถานที่ลง", "ปลายทาง", "ส่ง"], 7)))
-                sel_w_end = st.selectbox("นน. ปลายทาง:", header_options, index=header_options.index(auto_match(["ปลายทาง", "นน.ปลาย"], 10)))
+                sel_date_down = st.selectbox("วันที่ลงสินค้า:", header_options, index=header_options.index(default_date_down))
+                sel_dest = st.selectbox("สถานที่ลง (ปลายทาง):", header_options, index=header_options.index(default_dest))
+                sel_w_end = st.selectbox("นน. ปลายทาง:", header_options, index=header_options.index(default_w_end))
 
         idx_plate = headers_found[sel_plate]
         idx_prod = headers_found[sel_prod]
@@ -159,16 +176,15 @@ if uploaded_file is not None:
         idx_w_end = headers_found[sel_w_end]
         idx_price = headers_found[sel_price]
 
-        # 3. อ่านข้อมูลจาก Excel
+        # อ่านข้อมูลจาก Excel
         items_data = []
         last_valid_date = "-"
         
         for row in range(header_row + 1, ws.max_row + 1):
-            plate_val = ws.cell(row=row, column=idx_plate).value
-            plate_str = str(plate_val or "").strip()
+            plate = ws.cell(row=row, column=idx_plate).value
+            plate_str = str(plate or "").strip()
             
-            # กรองเอาเฉพาะแถวที่มีทะเบียนรถจริง
-            if plate_str and plate_str not in ["ทะเบียน", "None", "", "รวม", "ยอดรวม", "วันที่"]:
+            if plate_str and plate_str not in ["ทะเบียน", "None", "", "รวม", "ยอดรวม"]:
                 raw_date_up = ws.cell(row=row, column=idx_date_up).value
                 raw_date_down = ws.cell(row=row, column=idx_date_down).value
                 
@@ -195,7 +211,8 @@ if uploaded_file is not None:
                         price_val = float(clean_p)
                     except:
                         price_val = 0.62
-                if price_val > 100: # ทอนเป็นบาท/กก. ถ้าราคามาเป็นบาท/ตัน
+                        
+                if price_val > 100: # ถ้าเป็นราคาต่อตัน ให้ทอนเป็นบาทต่อ กก.
                     price_val = price_val / 1000.0
 
                 items_data.append({
@@ -211,7 +228,7 @@ if uploaded_file is not None:
                 })
 
         if len(items_data) == 0:
-            st.warning(f"⚠️ ไม่พบข้อมูลรายการในชีท **{selected_display}** กรุณาตรวจสอบการเลือกคอลัมน์ทะเบียนรถอีกครั้ง")
+            st.warning(f"⚠️ ไม่พบข้อมูลรายการในชีท **{selected_display}** กรุณาตรวจสอบการเลือกคอลัมน์ทะเบียนรถ")
         else:
             unique_dates = list(set([item["date_up"] for item in items_data if item["date_up"] != "-"]))
             date_filter_options = ["แสดงทั้งหมด"] + unique_dates
@@ -229,7 +246,7 @@ if uploaded_file is not None:
                 st.metric(label="จำนวนรายการที่พบ", value=f"{len(filtered_items)} รายการ")
             
             st.write("---")
-            st.subheader("📋 เลือกรายการที่ต้องการออกใบวางบิล")
+            st.subheader("📋 เลือกรายการที่ต้องการส่งออก")
             
             def set_all_checkboxes(status):
                 for idx in range(1, len(filtered_items) + 1):
@@ -258,7 +275,6 @@ if uploaded_file is not None:
             
             st.write("---")
             
-            # 4. สร้างเอกสาร Word
             if st.button("🚀 สร้างไฟล์ Word ใบวางบิล (.docx)", type="primary", use_container_width=True):
                 if len(selected_indices) == 0:
                     st.error("กรุณาเลือกอย่างน้อย 1 รายการก่อนสร้างเอกสาร")
@@ -273,7 +289,7 @@ if uploaded_file is not None:
                         section.left_margin = Inches(0.5)
                         section.right_margin = Inches(0.5)
                         
-                    # หัวเอกสาร
+                    # 1. หัวเอกสาร
                     p_title = doc.add_paragraph()
                     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     p_title.paragraph_format.space_after = Pt(4)
@@ -290,7 +306,7 @@ if uploaded_file is not None:
                     r_date.font.size = Pt(18)
                     r_date.font.bold = True
                     
-                    # ตารางรายการ
+                    # 2. ตารางหลัก (11 คอลัมน์)
                     total_rows = len(selected_indices) + 3
                     table = doc.add_table(rows=total_rows, cols=11)
                     table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -351,7 +367,7 @@ if uploaded_file is not None:
                             r.font.name = "TH SarabunPSK"
                             r.font.size = Pt(14)
 
-                    # แถวรวม
+                    # 3. แถวรวม
                     row_sum = table.rows[-2].cells
                     p_sum_lbl = row_sum[6].paragraphs[0]
                     p_sum_lbl.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -381,7 +397,7 @@ if uploaded_file is not None:
                     r_ship.font.bold = True
                     r_ship.font.size = Pt(14)
 
-                    # แถวยอดสุทธิ
+                    # 4. แถวยอดสุทธิ
                     row_net = table.rows[-1].cells
                     for cell in row_net:
                         set_cell_background(cell, "E8EEF8")
@@ -401,7 +417,7 @@ if uploaded_file is not None:
                     r_net_val.font.bold = True
                     r_net_val.font.size = Pt(14)
 
-                    # รายละเอียดการชำระเงิน
+                    # 5. รายละเอียดการชำระเงิน
                     doc.add_paragraph().paragraph_format.space_after = Pt(12)
                     
                     p_pay_title = doc.add_paragraph()
