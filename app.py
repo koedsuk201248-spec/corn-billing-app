@@ -48,12 +48,11 @@ def add_highlight(run):
 
 # ฟังก์ชั่นจัดรูปแบบวันที่ + แก้ไขปี 1969 อัตโนมัติ
 def format_date(val):
-    if not val:
-        return "-"
+    if not val or str(val).strip() in ["-", "None", ""]:
+        return None
         
     if isinstance(val, datetime):
         year = val.year
-        # แก้ไขกรณีปีถูกตีความผิดเป็น 1969 (จาก พ.ศ. 2569)
         if year == 1969:
             year = 2026
         elif year > 2500:
@@ -61,13 +60,18 @@ def format_date(val):
         return val.strftime(f"%d/%m/{year}")
     
     val_str = str(val).strip().split()[0]
-    # ป้องกันกรณีเป็นข้อความที่ลงท้ายด้วย 1969
     if "1969" in val_str:
         val_str = val_str.replace("1969", "2026")
     elif "/69" in val_str:
         val_str = val_str.replace("/69", "/2026")
         
     return val_str
+
+def parse_date_for_sort(date_str):
+    try:
+        return datetime.strptime(date_str, "%d/%m/%Y")
+    except Exception:
+        return datetime.min
 
 # --- ส่วนหัวของเว็บ ---
 st.markdown("""
@@ -101,7 +105,7 @@ if uploaded_file is not None:
         header_row = 4
         for r in range(1, min(15, ws.max_row + 1)):
             row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(1, ws.max_column + 1)]
-            if any("ทะเบียน" in val for val in row_vals):
+            if any(kw in val for val in row_vals for kw in ["ทะเบียน", "ลำดับ", "สินค้า"]):
                 header_row = r
                 break
                 
@@ -116,7 +120,6 @@ if uploaded_file is not None:
             
         header_keys = list(headers_found.keys())
         
-        # ฟังก์ชั่นจับคู่คอลัมน์แบบแม่นยำ
         def find_exact_col(exact_keywords, fallback_idx):
             for kw in exact_keywords:
                 for k in header_keys:
@@ -135,7 +138,7 @@ if uploaded_file is not None:
             st.info("ระบบจับคู่หัวตารางให้อัตโนมัติ หากข้อมูลขึ้นไม่ตรง สามารถปรับเปลี่ยนคอลัมน์ได้จากตัวเลือกด้านล่างครับ")
             c1, c2, c3, c4 = st.columns(4)
             
-            default_date = find_exact_col(["วัน/เดือน/ปี ขึ้นสินค้า", "วันที่ขึ้นสินค้า", "วันที่"], 2)
+            default_date = find_exact_col(["วัน/เดือน/ปี ขึ้นสินค้า", "วันที่ขึ้นสินค้า", "วัน/เดือน/ปี", "วันที่"], 2)
             default_plate = find_exact_col(["ทะเบียน"], 4)
             default_dest = find_exact_col(["ปลายทาง"], 8)
             default_price = find_exact_col(["ราคา"], 13)
@@ -162,24 +165,31 @@ if uploaded_file is not None:
         idx_w_end = headers_found[sel_w_end]
         idx_w_diff = headers_found[sel_w_diff]
 
-        # 3. อ่านข้อมูลจากตาราง
+        # 3. อ่านข้อมูลจากตาราง (พร้อมระบบเติมวันที่อัตโนมัติหากช่องว่าง)
         items_data = []
+        last_valid_date = "-"
+        
         for row in range(header_row + 1, ws.max_row + 1):
             plate = ws.cell(row=row, column=idx_plate).value
             
             if plate and str(plate).strip() not in ["ทะเบียน", "None", "", "รวม"]:
-                date_up = ws.cell(row=row, column=idx_date_up).value
+                raw_date = ws.cell(row=row, column=idx_date_up).value
+                formatted_d = format_date(raw_date)
+                
+                # ถ้าแถวนี้มีวันที่ให้จำไว้ ถ้าแถวนี้ไม่มีให้ใช้วันที่ของแถวล่าสุด
+                if formatted_d and formatted_d != "-":
+                    last_valid_date = formatted_d
+                
                 destination = ws.cell(row=row, column=idx_dest).value
                 weight_start = ws.cell(row=row, column=idx_w_start).value
                 weight_end = ws.cell(row=row, column=idx_w_end).value
                 weight_diff = ws.cell(row=row, column=idx_w_diff).value
                 price = ws.cell(row=row, column=idx_price).value
                 
-                # ถ้าน้ำหนักปลายทางไม่มี ให้ใช้น้ำหนักต้นทางแทน
                 display_weight = weight_end if (weight_end is not None and str(weight_end).strip() != "") else weight_start
                 
                 items_data.append({
-                    "date_up": format_date(date_up),
+                    "date_up": last_valid_date,
                     "plate": str(plate).strip(),
                     "destination": str(destination).strip() if destination else "-",
                     "weight_start": weight_start,
@@ -192,8 +202,10 @@ if uploaded_file is not None:
         if len(items_data) == 0:
             st.warning(f"⚠️ ไม่พบข้อมูลรายการในชีท **{selected_display}**")
         else:
-            all_dates = sorted(list(set([item["date_up"] for item in items_data if item["date_up"] != "-"])))
-            date_filter_options = ["แสดงทั้งหมด"] + all_dates
+            # ดึงวันที่ทั้งหมดแล้วเรียงตามปฏิทินจริง
+            unique_dates = list(set([item["date_up"] for item in items_data if item["date_up"] != "-"]))
+            sorted_dates = sorted(unique_dates, key=parse_date_for_sort)
+            date_filter_options = ["แสดงทั้งหมด"] + sorted_dates
             
             with col_sel2:
                 selected_date = st.selectbox("📅 กรองตามวันที่ขึ้นสินค้า:", date_filter_options)
