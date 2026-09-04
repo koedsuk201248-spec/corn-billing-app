@@ -6,6 +6,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 import io
+from datetime import datetime
 
 # ตั้งค่าหน้าเว็บ Streamlit
 st.set_page_config(page_title="ระบบสร้างใบวางบิลข้าวโพดแห้ง", page_icon="🌽", layout="centered")
@@ -15,6 +16,13 @@ def add_highlight(run):
     highlight = OxmlElement('w:highlight')
     highlight.set(qn('w:val'), 'yellow')
     rPr.append(highlight)
+
+def format_date(val):
+    if isinstance(val, datetime):
+        return val.strftime("%d/%m/%Y")
+    elif val:
+        return str(val).split()[0]
+    return "-"
 
 st.title("🌽 ระบบสร้างใบวางบิลข้าวโพดแห้ง (เจ้นัชชา)")
 st.write("เลือกอัปโหลดไฟล์ Excel แล้วติ๊กเลือกข้อที่ต้องการนำมาสร้างเป็นไฟล์ Word ได้ทันที")
@@ -27,20 +35,19 @@ if uploaded_file is not None:
     
     # 2. รายชื่อชีทจริงในไฟล์ Excel
     raw_sheet_names = wb.sheetnames
-    
-    # แสดงชื่อชีทแบบตัดเว้นวรรคเพื่อความสวยงามใน Dropdown
     sheet_options = {s.strip(): s for s in raw_sheet_names}
     
     selected_display = st.selectbox("📌 เลือกอำเภอ / ชีทที่ต้องการ:", list(sheet_options.keys()))
     
     if selected_display:
-        # ดึงชื่อชีทจริงใน Excel มาใช้งาน
         actual_sheet_name = sheet_options[selected_display]
         ws = wb[actual_sheet_name]
         
         # อ่านรายการข้อมูลในชีทที่เลือก
         items_data = []
-        for row in range(4, ws.max_row + 1):
+        for row in range(5, ws.max_row + 1):
+            date_up = ws.cell(row=row, column=2).value
+            date_down = ws.cell(row=row, column=3).value
             plate = ws.cell(row=row, column=4).value
             destination = ws.cell(row=row, column=8).value
             weight_end = ws.cell(row=row, column=11).value
@@ -48,7 +55,12 @@ if uploaded_file is not None:
             price = ws.cell(row=row, column=13).value
             
             if plate and str(plate).strip() != "ทะเบียน":
+                date_up_str = format_date(date_up)
+                date_down_str = format_date(date_down)
+                
                 items_data.append({
+                    "date_up": date_up_str,
+                    "date_down": date_down_str,
                     "plate": str(plate).strip(),
                     "destination": str(destination).strip() if destination else "-",
                     "weight_end": weight_end,
@@ -57,11 +69,24 @@ if uploaded_file is not None:
                 })
         
         st.write("---")
-        st.write(f"### 📋 รายการข้อมูลอำเภอ **{selected_display}** (พบทั้งหมด {len(items_data)} รายการ)")
         
         if len(items_data) == 0:
-            st.warning("⚠️ ไม่พบข้อมูลรายการในอำเภอนี้")
+            st.warning(f"⚠️ ไม่พบข้อมูลรายการในอำเภอ **{selected_display}**")
         else:
+            # ดึงรายการวันที่ทั้งหมดมาสร้าง Dropdown กรองข้อมูล
+            all_dates = sorted(list(set([item["date_up"] for item in items_data if item["date_up"] != "-"])))
+            date_filter_options = ["แสดงทั้งหมด"] + all_dates
+            
+            selected_date = st.selectbox("📅 กรองเลือกเฉพาะวันที่ขึ้นสินค้า:", date_filter_options)
+            
+            # กรองรายการตามวันที่เลือก
+            if selected_date != "แสดงทั้งหมด":
+                filtered_items = [item for item in items_data if item["date_up"] == selected_date]
+            else:
+                filtered_items = items_data
+
+            st.write(f"### 📋 รายการข้อมูลอำเภอ **{selected_display}** (พบทั้งหมด {len(filtered_items)} รายการ)")
+            
             # 3. เลือกข้อที่ต้องการนำมาทำ Word
             st.write("ติ๊กเลือกข้อที่ต้องการทำ Word:")
             
@@ -71,8 +96,8 @@ if uploaded_file is not None:
             
             selected_indices = []
             
-            for idx, item in enumerate(items_data, 1):
-                label = f"ข้อ {idx}: ทะเบียน {item['plate']} | ปลายทาง: {item['destination']} | นน.: {item['weight_end'] or '-'} | ราคา: {item['price'] or '-'}"
+            for idx, item in enumerate(filtered_items, 1):
+                label = f"ข้อ {idx} [{item['date_up']}]: ทะเบียน {item['plate']} | ปลายทาง: {item['destination']} | นน.: {item['weight_end'] or '-'} | ราคา: {item['price'] or '-'}"
                 
                 default_val = True
                 if clear_all:
@@ -80,9 +105,9 @@ if uploaded_file is not None:
                 elif select_all:
                     default_val = True
                     
-                is_selected = st.checkbox(label, value=default_val, key=f"chk_{idx}")
+                is_selected = st.checkbox(label, value=default_val, key=f"chk_{selected_date}_{idx}")
                 if is_selected:
-                    selected_indices.append(idx - 1)
+                    selected_indices.append(item)
             
             st.write("---")
             
@@ -110,9 +135,7 @@ if uploaded_file is not None:
                     r_title.font.size = Pt(22)
                     r_title.font.bold = True
                     
-                    for count, s_idx in enumerate(selected_indices, 1):
-                        item = items_data[s_idx]
-                        
+                    for count, item in enumerate(selected_indices, 1):
                         if count > 1:
                             doc.add_page_break()
                             
@@ -156,5 +179,5 @@ if uploaded_file is not None:
                         label="📥 กดดาวน์โหลดไฟล์ Word (.docx)",
                         data=bio,
                         file_name=f"วางบิลข้าวโพดแห้ง_{selected_display}.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"   
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"    
                     )
