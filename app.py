@@ -91,21 +91,25 @@ if uploaded_file is not None:
             st.write("ติ๊กเลือกข้อที่ต้องการทำ Word:")
             
             col_a, col_b = st.columns(2)
-            select_all = col_a.button("✅ เลือกทั้งหมด")
-            clear_all = col_b.button("❌ ไม่เลือกเลย")
+            
+            # สร้างฟังก์ชั่นเปลี่ยนค่าเลือกทั้งหมด / ปลดเลือกทั้งหมด
+            def set_all_checkboxes(status):
+                for idx in range(1, len(filtered_items) + 1):
+                    st.session_state[f"chk_{selected_date}_{idx}"] = status
+
+            col_a.button("✅ เลือกทั้งหมด", on_click=set_all_checkboxes, args=(True,))
+            col_b.button("❌ ไม่เลือกเลย", on_click=set_all_checkboxes, args=(False,))
             
             selected_indices = []
             
             for idx, item in enumerate(filtered_items, 1):
+                key_name = f"chk_{selected_date}_{idx}"
+                if key_name not in st.session_state:
+                    st.session_state[key_name] = True
+                    
                 label = f"ข้อ {idx} [{item['date_up']}]: ทะเบียน {item['plate']} | ปลายทาง: {item['destination']} | นน.: {item['weight_end'] or '-'} | ราคา: {item['price'] or '-'}"
                 
-                default_val = True
-                if clear_all:
-                    default_val = False
-                elif select_all:
-                    default_val = True
-                    
-                is_selected = st.checkbox(label, value=default_val, key=f"chk_{selected_date}_{idx}")
+                is_selected = st.checkbox(label, key=key_name)
                 if is_selected:
                     selected_indices.append(item)
             
