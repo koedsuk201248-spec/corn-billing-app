@@ -115,7 +115,7 @@ def add_word_field_formula(cell, formula_str, default_value_str, is_bold=False, 
 st.markdown("""
     <div class="header-card">
         <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด</div>
-        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word แนวนอน - ตารางรายละเอียดการชำระเงินสั้นพอดีตัวหนังสือ</div>
+        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word แนวนอน - ไม่รวม นน.ต้นทาง ในแถวรวม</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -335,7 +335,6 @@ if uploaded_file is not None:
                         r.font.size = Pt(14)
                         r.font.color.rgb = RGBColor(255, 255, 255)
                         
-                    sum_w_start = 0
                     sum_w_end = 0
                     sum_total_shipping = 0
                     
@@ -350,7 +349,6 @@ if uploaded_file is not None:
                         calc_w = w_end if w_end > 0 else w_start
                         shipping_cost = calc_w * price_kg
                         
-                        sum_w_start += w_start
                         sum_w_end += w_end
                         sum_total_shipping += shipping_cost
                         
@@ -382,7 +380,7 @@ if uploaded_file is not None:
                         word_formula = f"={col_w_letter}{row_num}*J{row_num}"
                         add_word_field_formula(row_cells[10], word_formula, shipping_str, is_bold=False, font_size=14)
 
-                    # 3. แถวรวม
+                    # 3. แถวรวม (ไม่รวม นน.ต้นทาง - เว้นว่างช่อง นน.ต้นทาง)
                     row_sum = table.rows[-2].cells
                     p_sum_lbl = row_sum[6].paragraphs[0]
                     p_sum_lbl.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -391,12 +389,7 @@ if uploaded_file is not None:
                     r_sum_lbl.font.bold = True
                     r_sum_lbl.font.size = Pt(14)
                     
-                    p_w_s = row_sum[7].paragraphs[0]
-                    p_w_s.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    r_w_s = p_w_s.add_run(f"{sum_w_start:,.0f}")
-                    r_w_s.font.name = "TH SarabunPSK"
-                    r_w_s.font.bold = True
-                    r_w_s.font.size = Pt(14)
+                    # ช่อง นน.ต้นทาง เว้นว่าง ไม่ใส่ยอดรวม
                     
                     p_w_e = row_sum[8].paragraphs[0]
                     p_w_e.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -422,7 +415,7 @@ if uploaded_file is not None:
                     
                     add_word_field_formula(row_net[10], "=K" + str(total_rows - 1), f"{sum_total_shipping:,.2f}", is_bold=True, font_size=14)
 
-                    # 5. รายละเอียดการชำระเงิน (ปรับขนาดตารางให้สั้นและพอดีคำ)
+                    # 5. รายละเอียดการชำระเงิน
                     doc.add_paragraph().paragraph_format.space_after = Pt(12)
                     
                     p_pay_title = doc.add_paragraph()
@@ -435,30 +428,25 @@ if uploaded_file is not None:
                     pay_table = doc.add_table(rows=3, cols=2)
                     pay_table.alignment = WD_TABLE_ALIGNMENT.LEFT
                     set_table_borders(pay_table)
-                    
-                    # ปิดระบบยืดตารางอัตโนมัติ เพื่อให้ตารางสั้นตามขนาดที่กำหนด
                     pay_table.autofit = False
                     
                     pay_data = [
-                        ("ชื่อบัญชี :", "หจก.ทีเอ็นพี โลจิสติกส์"),
+                        ("ชื่อบัญชี :", "หจก. ทีเอ็นพี โลจิสติกส์ 19"),
                         ("ธนาคาร :", "กสิกรไทย"),
                         ("เลขที่บัญชี :", "097-1-01627-2")
                     ]
                     
-                    # กำหนดความกว้างคอลัมน์แบบกระชับ (1.2 นิ้ว และ 3.0 นิ้ว)
-                    col_widths = [Inches(1.2), Inches(3.0)]
+                    col_widths = [Inches(1.2), Inches(3.2)]
                     
                     for r_idx, (label, val) in enumerate(pay_data):
                         row_cells = pay_table.rows[r_idx].cells
                         
-                        # คอลัมน์ซ้าย
                         row_cells[0].width = col_widths[0]
                         p_lbl = row_cells[0].paragraphs[0]
                         r_lbl = p_lbl.add_run(label)
                         r_lbl.font.name = "TH SarabunPSK"
                         r_lbl.font.size = Pt(16)
                         
-                        # คอลัมน์ขวา
                         row_cells[1].width = col_widths[1]
                         p_val = row_cells[1].paragraphs[0]
                         r_val = p_val.add_run(val)
