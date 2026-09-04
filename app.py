@@ -8,8 +8,60 @@ from docx.oxml.ns import qn
 import io
 from datetime import datetime
 
-# ตั้งค่าหน้าเว็บ Streamlit
-st.set_page_config(page_title="ระบบสร้างใบวางบิลข้าวโพดแห้ง", page_icon="🌽", layout="centered")
+# 1. ตั้งค่าหน้าเว็บ Streamlit
+st.set_page_config(
+    page_title="ระบบสร้างใบวางบิลข้าวโพดแห้ง", 
+    page_icon="🌽", 
+    layout="wide"
+)
+
+# 2. ตกแต่งด้วย Custom CSS
+st.markdown("""
+    <style>
+    /* พื้นหลังหลัก */
+    .main {
+        background-color: #0f172a;
+    }
+    
+    /* ตกแต่งการ์ดหัวข้อ */
+    .header-card {
+        background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+        padding: 24px;
+        border-radius: 16px;
+        border: 1px solid #475569;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+    
+    .header-title {
+        color: #f8fafc;
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+    
+    .header-subtitle {
+        color: #94a3b8;
+        font-size: 15px;
+    }
+
+    /* ปุ่มหลัก */
+    .stButton>button {
+        border-radius: 10px;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+    
+    /* สไตล์กล่อง Checkbox */
+    div[data-baseweb="checkbox"] {
+        padding: 8px 12px;
+        background-color: #1e293b;
+        border-radius: 8px;
+        margin-bottom: 6px;
+        border: 1px solid #334155;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 def add_highlight(run):
     rPr = run._r.get_or_add_rPr()
@@ -24,26 +76,35 @@ def format_date(val):
         return str(val).split()[0]
     return "-"
 
-st.title("🌽 ระบบสร้างใบวางบิลข้าวโพดแห้ง (เจ้นัชชา)")
-st.write("เลือกอัปโหลดไฟล์ Excel แล้วติ๊กเลือกข้อที่ต้องการนำมาสร้างเป็นไฟล์ Word ได้ทันที")
+# --- ส่วนหัวของเว็บ ---
+st.markdown("""
+    <div class="header-card">
+        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพดแห้ง (เจ้นัชชา)</div>
+        <div class="header-subtitle">จัดการและแปลงข้อมูลไฟล์ Excel ส่งออกเป็นเอกสาร Word พร้อมใช้งานอย่างรวดเร็ว</div>
+    </div>
+""", unsafe_allow_html=True)
 
-# 1. ปุ่มอัปโหลดไฟล์ Excel
-uploaded_file = st.file_uploader("อัปโหลดไฟล์ Excel (ขายข้าวโพดแห้ง)", type=["xlsx"])
+# --- แถบเครื่องมือด้านข้าง (Sidebar) ---
+with st.sidebar:
+    st.header("⚙️ เมนูตั้งค่า")
+    uploaded_file = st.file_uploader("1. อัปโหลดไฟล์ Excel", type=["xlsx"])
+    st.markdown("---")
+    st.caption("พัฒนาเพื่อความสะดวกในการจัดการเอกสาร")
 
+# --- พื้นที่แสดงผลหลัก ---
 if uploaded_file is not None:
     wb = openpyxl.load_workbook(uploaded_file, data_only=True)
-    
-    # 2. รายชื่อชีทจริงในไฟล์ Excel
     raw_sheet_names = wb.sheetnames
     sheet_options = {s.strip(): s for s in raw_sheet_names}
     
-    selected_display = st.selectbox("📌 เลือกอำเภอ / ชีทที่ต้องการ:", list(sheet_options.keys()))
+    col_sel1, col_sel2 = st.columns(2)
+    with col_sel1:
+        selected_display = st.selectbox("📌 เลือกอำเภอ / ชีท:", list(sheet_options.keys()))
     
     if selected_display:
         actual_sheet_name = sheet_options[selected_display]
         ws = wb[actual_sheet_name]
         
-        # อ่านรายการข้อมูลในชีทที่เลือก
         items_data = []
         for row in range(5, ws.max_row + 1):
             date_up = ws.cell(row=row, column=2).value
@@ -55,12 +116,9 @@ if uploaded_file is not None:
             price = ws.cell(row=row, column=13).value
             
             if plate and str(plate).strip() != "ทะเบียน":
-                date_up_str = format_date(date_up)
-                date_down_str = format_date(date_down)
-                
                 items_data.append({
-                    "date_up": date_up_str,
-                    "date_down": date_down_str,
+                    "date_up": format_date(date_up),
+                    "date_down": format_date(date_down),
                     "plate": str(plate).strip(),
                     "destination": str(destination).strip() if destination else "-",
                     "weight_end": weight_end,
@@ -68,38 +126,38 @@ if uploaded_file is not None:
                     "price": price
                 })
         
-        st.write("---")
-        
         if len(items_data) == 0:
             st.warning(f"⚠️ ไม่พบข้อมูลรายการในอำเภอ **{selected_display}**")
         else:
-            # ดึงรายการวันที่ทั้งหมดมาสร้าง Dropdown กรองข้อมูล
             all_dates = sorted(list(set([item["date_up"] for item in items_data if item["date_up"] != "-"])))
             date_filter_options = ["แสดงทั้งหมด"] + all_dates
             
-            selected_date = st.selectbox("📅 กรองเลือกเฉพาะวันที่ขึ้นสินค้า:", date_filter_options)
+            with col_sel2:
+                selected_date = st.selectbox("📅 กรองตามวันที่ขึ้นสินค้า:", date_filter_options)
             
-            # กรองรายการตามวันที่เลือก
             if selected_date != "แสดงทั้งหมด":
                 filtered_items = [item for item in items_data if item["date_up"] == selected_date]
             else:
                 filtered_items = items_data
 
-            st.write(f"### 📋 รายการข้อมูลอำเภอ **{selected_display}** (พบทั้งหมด {len(filtered_items)} รายการ)")
+            # แสดงการ์ดสรุปจำนวนรายการ
+            m1, m2 = st.columns(2)
+            m1.metric(label="อำเภอที่เลือก", value=selected_display)
+            m2.metric(label="จำนวนรายการทั้งหมด", value=f"{len(filtered_items)} รายการ")
             
-            # 3. เลือกข้อที่ต้องการนำมาทำ Word
-            st.write("ติ๊กเลือกข้อที่ต้องการทำ Word:")
+            st.write("---")
+            st.subheader("📋 เลือกรายการที่ต้องการส่งออก")
             
-            col_a, col_b = st.columns(2)
-            
-            # สร้างฟังก์ชั่นเปลี่ยนค่าเลือกทั้งหมด / ปลดเลือกทั้งหมด
+            # ปุ่มควบคุมการเลือก
             def set_all_checkboxes(status):
                 for idx in range(1, len(filtered_items) + 1):
                     st.session_state[f"chk_{selected_date}_{idx}"] = status
 
-            col_a.button("✅ เลือกทั้งหมด", on_click=set_all_checkboxes, args=(True,))
-            col_b.button("❌ ไม่เลือกเลย", on_click=set_all_checkboxes, args=(False,))
+            btn_c1, btn_c2, _ = st.columns([1, 1, 2])
+            btn_c1.button("✅ เลือกทั้งหมด", on_click=set_all_checkboxes, args=(True,), use_container_width=True)
+            btn_c2.button("❌ ไม่เลือกเลย", on_click=set_all_checkboxes, args=(False,), use_container_width=True)
             
+            st.write("")
             selected_indices = []
             
             for idx, item in enumerate(filtered_items, 1):
@@ -115,14 +173,12 @@ if uploaded_file is not None:
             
             st.write("---")
             
-            # 4. ปุ่มสร้างและดาวน์โหลดไฟล์ Word
-            if st.button("🚀 สร้างไฟล์ Word (.docx)", type="primary"):
+            # ปุ่มสร้างเอกสาร
+            if st.button("🚀 สร้างไฟล์ Word (.docx)", type="primary", use_container_width=True):
                 if len(selected_indices) == 0:
-                    st.error("กรุณาเลือกอย่างน้อย 1 ข้อก่อนสั่งสร้างไฟล์ครับ")
+                    st.error("กรุณาเลือกอย่างน้อย 1 รายการก่อนสร้างเอกสาร")
                 else:
                     doc = Document()
-                    
-                    # ตั้งค่าระยะขอบ A4
                     for section in doc.sections:
                         section.page_width = Inches(8.27)
                         section.page_height = Inches(11.69)
@@ -144,7 +200,6 @@ if uploaded_file is not None:
                             doc.add_page_break()
                             
                         header_text = f"ทะเบียน {item['plate']} ({selected_display}-{item['destination']})"
-                        
                         weight_val = item['weight_end']
                         weight_str = f"นน.ปลายทาง {weight_val:,.0f}" if isinstance(weight_val, (int, float)) else f"นน.ปลายทาง {weight_val or '-'}"
                         
@@ -153,12 +208,11 @@ if uploaded_file is not None:
                             sign = "+" if diff_val > 0 else ""
                             diff_str = f"ส่วนต่างน้ำหนัก {sign}{diff_val:,.0f} กิโลกรัม"
                         else:
-                            diff_str = f"ส่วนต่างน้ำหนัก {diff_val or '-'}"
+                            diff_str = f"ส่วนต่างน้ำหนัก {diff_str or '-'}"
                             
                         price_str = f"ราคา {item['price']}" if item['price'] else "ราคา -"
                         
-                        lines = [header_text, weight_str, diff_str, price_str]
-                        for text in lines:
+                        for text in [header_text, weight_str, diff_str, price_str]:
                             p = doc.add_paragraph()
                             p.paragraph_format.space_after = Pt(12)
                             r = p.add_run(text)
@@ -173,15 +227,17 @@ if uploaded_file is not None:
                         r_status.font.bold = True
                         add_highlight(r_status)
                     
-                    # เซฟไฟล์เข้าสตรีมบัฟเฟอร์เตรียมโหลด
                     bio = io.BytesIO()
                     doc.save(bio)
                     bio.seek(0)
                     
-                    st.success(f"สร้างไฟล์สำเร็จ! สรุปเลือกมาทำทั้งหมด {len(selected_indices)} ข้อ")
+                    st.success(f"สร้างไฟล์สำเร็จ! สรุปเลือกมาทำทั้งหมด {len(selected_indices)} รายการ")
                     st.download_button(
                         label="📥 กดดาวน์โหลดไฟล์ Word (.docx)",
                         data=bio,
                         file_name=f"วางบิลข้าวโพดแห้ง_{selected_display}.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"    
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True
                     )
+else:
+    st.info("👈 กรุณาอัปโหลดไฟล์ Excel ทางเมนูด้านซ้ายเพื่อเริ่มต้นใช้งาน")
