@@ -1,16 +1,17 @@
 import streamlit as st
 import openpyxl
 from docx import Document
-from docx.shared import Inches, Pt
+from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
+from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
+from docx.oxml import OxmlElement, parse_xml
+from docx.oxml.ns import qn, nsdecls
 import io
 from datetime import datetime
 
 # 1. ตั้งค่าหน้าเว็บ Streamlit
 st.set_page_config(
-    page_title="ระบบสร้างใบวางบิลข้าวโพด", 
+    page_title="ระบบสร้างใบวางบิลอัจฉริยะ", 
     page_icon="🌽", 
     layout="wide"
 )
@@ -40,16 +41,25 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-def add_highlight(run):
-    rPr = run._r.get_or_add_rPr()
-    highlight = OxmlElement('w:highlight')
-    highlight.set(qn('w:val'), 'yellow')
-    rPr.append(highlight)
+# ฟังก์ชั่นใส่เส้นขอบตาราง Word
+def set_table_borders(table):
+    tblPr = table._tbl.tblPr
+    borders = parse_xml(
+        f'<w:tblBorders {nsdecls("w")}>\n'
+        f'  <w:top w:val="single" w:sz="4" w:space="0" w:color="000000"/>\n'
+        f'  <w:bottom w:val="single" w:sz="4" w:space="0" w:color="000000"/>\n'
+        f'  <w:insideH w:val="single" w:sz="4" w:space="0" w:color="000000"/>\n'
+        f'  <w:insideV w:val="single" w:sz="4" w:space="0" w:color="000000"/>\n'
+        f'  <w:left w:val="single" w:sz="4" w:space="0" w:color="000000"/>\n'
+        f'  <w:right w:val="single" w:sz="4" w:space="0" w:color="000000"/>\n'
+        f'</w:tblBorders>'
+    )
+    tblPr.append(borders)
 
 # ฟังก์ชั่นจัดรูปแบบวันที่ + แก้ไขปี 1969 อัตโนมัติ
 def format_date(val):
     if not val or str(val).strip() in ["-", "None", ""]:
-        return None
+        return "-"
         
     if isinstance(val, datetime):
         year = val.year
@@ -76,8 +86,8 @@ def parse_date_for_sort(date_str):
 # --- ส่วนหัวของเว็บ ---
 st.markdown("""
     <div class="header-card">
-        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด (เจ้นัชชา)</div>
-        <div class="header-subtitle">จัดการและแปลงข้อมูลไฟล์ Excel ส่งออกเป็นเอกสาร Word พร้อมใช้งานอย่างรวดเร็ว</div>
+        <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด (รูปแบบตาราง เจพีที)</div>
+        <div class="header-subtitle">แปลงข้อมูลตาราง Excel ออกเป็นใบวางบิลตาราง Word แบบมาตรฐาน</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -86,7 +96,7 @@ with st.sidebar:
     st.header("⚙️ เมนูตั้งค่า")
     uploaded_file = st.file_uploader("1. อัปโหลดไฟล์ Excel", type=["xlsx"])
     st.markdown("---")
-    st.caption("ระบบอ่านข้อมูลอัตโนมัติ")
+    st.caption("ระบบดึงข้อมูลลงตารางให้อัตโนมัติ")
 
 if uploaded_file is not None:
     wb = openpyxl.load_workbook(uploaded_file, data_only=True)
@@ -101,7 +111,7 @@ if uploaded_file is not None:
         actual_sheet_name = sheet_options[selected_display]
         ws = wb[actual_sheet_name]
         
-        # 1. ค้นหาแถวที่เป็นหัวตาราง (Header Row)
+        # ค้นหาแถวที่เป็นหัวตาราง
         header_row = 4
         for r in range(1, min(15, ws.max_row + 1)):
             row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(1, ws.max_column + 1)]
@@ -109,7 +119,6 @@ if uploaded_file is not None:
                 header_row = r
                 break
                 
-        # สร้างรายชื่อคอลัมน์ทั้งหมดที่พบในแถวหัวตาราง
         headers_found = {}
         for c in range(1, ws.max_column + 1):
             val = str(ws.cell(row=header_row, column=c).value or "").strip()
@@ -133,23 +142,27 @@ if uploaded_file is not None:
                 return header_keys[fallback_idx - 1]
             return header_keys[0]
 
-        default_date = find_exact_col(["วัน/เดือน/ปี ขึ้นสินค้า", "วันที่ขึ้นสินค้า", "วัน/เดือน/ปี", "วันที่"], 2)
+        default_date_up = find_exact_col(["วัน/เดือน/ปี ขึ้นสินค้า", "วันที่ขึ้นสินค้า", "วัน/เดือน/ปี", "วันที่"], 2)
+        default_date_down = find_exact_col(["วัน/เดือน/ปี ลงสินค้า", "วันที่ลงสินค้า", "วันที่ลง"], 3)
         default_plate = find_exact_col(["ทะเบียน"], 4)
+        default_prod = find_exact_col(["สินค้า"], 5)
+        default_origin = find_exact_col(["ต้นทาง"], 7)
         default_dest = find_exact_col(["ปลายทาง"], 8)
         default_price = find_exact_col(["ราคา"], 13)
         default_w_start = find_exact_col(["นน.ต้นทาง", "น้ำหนักต้นทาง"], 10)
         default_w_end = find_exact_col(["นน.ปลายทาง", "น้ำหนักปลายทาง"], 11)
-        default_w_diff = find_exact_col(["ส่วนต่างน้ำหนัก", "ส่วนต่าง"], 12)
 
-        idx_date_up = headers_found[default_date]
+        idx_date_up = headers_found[default_date_up]
+        idx_date_down = headers_found[default_date_down]
         idx_plate = headers_found[default_plate]
+        idx_prod = headers_found.get(default_prod, idx_plate)
+        idx_origin = headers_found.get(default_origin, idx_plate)
         idx_dest = headers_found[default_dest]
         idx_price = headers_found[default_price]
         idx_w_start = headers_found[default_w_start]
         idx_w_end = headers_found[default_w_end]
-        idx_w_diff = headers_found[default_w_diff]
 
-        # 3. อ่านข้อมูลจากตาราง (พร้อมระบบเติมวันที่อัตโนมัติหากช่องว่าง)
+        # อ่านข้อมูลจากตาราง
         items_data = []
         last_valid_date = "-"
         
@@ -157,28 +170,32 @@ if uploaded_file is not None:
             plate = ws.cell(row=row, column=idx_plate).value
             
             if plate and str(plate).strip() not in ["ทะเบียน", "None", "", "รวม"]:
-                raw_date = ws.cell(row=row, column=idx_date_up).value
-                formatted_d = format_date(raw_date)
+                raw_date_up = ws.cell(row=row, column=idx_date_up).value
+                raw_date_down = ws.cell(row=row, column=idx_date_down).value
                 
-                if formatted_d and formatted_d != "-":
-                    last_valid_date = formatted_d
+                formatted_d_up = format_date(raw_date_up)
+                formatted_d_down = format_date(raw_date_down)
                 
-                destination = ws.cell(row=row, column=idx_dest).value
-                weight_start = ws.cell(row=row, column=idx_w_start).value
-                weight_end = ws.cell(row=row, column=idx_w_end).value
-                weight_diff = ws.cell(row=row, column=idx_w_diff).value
-                price = ws.cell(row=row, column=idx_price).value
+                if formatted_d_up and formatted_d_up != "-":
+                    last_valid_date = formatted_d_up
                 
-                display_weight = weight_end if (weight_end is not None and str(weight_end).strip() != "") else weight_start
+                product = ws.cell(row=row, column=idx_prod).value or "ข้าวโพด"
+                origin = ws.cell(row=row, column=idx_origin).value or selected_display
+                destination = ws.cell(row=row, column=idx_dest).value or "-"
+                
+                weight_start = ws.cell(row=row, column=idx_w_start).value or "-"
+                weight_end = ws.cell(row=row, column=idx_w_end).value or "-"
+                price = ws.cell(row=row, column=idx_price).value or "-"
                 
                 items_data.append({
                     "date_up": last_valid_date,
+                    "date_down": formatted_d_down,
                     "plate": str(plate).strip(),
-                    "destination": str(destination).strip() if destination else "-",
+                    "product": str(product).strip(),
+                    "origin": str(origin).strip(),
+                    "destination": str(destination).strip(),
                     "weight_start": weight_start,
                     "weight_end": weight_end,
-                    "display_weight": display_weight,
-                    "weight_diff": weight_diff,
                     "price": price
                 })
 
@@ -220,10 +237,10 @@ if uploaded_file is not None:
                 if key_name not in st.session_state:
                     st.session_state[key_name] = True
                     
-                w_val = item['display_weight']
-                w_str = f"{w_val:,.0f}" if isinstance(w_val, (int, float)) else f"{w_val or '-'}"
+                w_val = item['weight_end'] if item['weight_end'] != "-" else item['weight_start']
+                w_str = f"{w_val:,.0f}" if isinstance(w_val, (int, float)) else f"{w_val}"
                 
-                label = f"ข้อ {idx} [{item['date_up']}]: ทะเบียน {item['plate']} | ปลายทาง: {item['destination']} | นน.: {w_str} | ราคา: {item['price'] or '-'}"
+                label = f"ข้อ {idx} [{item['date_up']}]: ทะเบียน {item['plate']} | ปลายทาง: {item['destination']} | นน.: {w_str} | ราคา: {item['price']}"
                 
                 is_selected = st.checkbox(label, key=key_name)
                 if is_selected:
@@ -231,74 +248,145 @@ if uploaded_file is not None:
             
             st.write("---")
             
-            if st.button("🚀 สร้างไฟล์ Word (.docx)", type="primary", use_container_width=True):
+            # ปุ่มสร้างเอกสารแบบตารางใบวางบิล
+            if st.button("🚀 สร้างไฟล์ Word ใบวางบิล (.docx)", type="primary", use_container_width=True):
                 if len(selected_indices) == 0:
                     st.error("กรุณาเลือกอย่างน้อย 1 รายการก่อนสร้างเอกสาร")
                 else:
                     doc = Document()
+                    
+                    # ตั้งค่าขอบกระดาษ 0.6 นิ้วตามแบบต้นฉบับ
                     for section in doc.sections:
                         section.page_width = Inches(8.27)
                         section.page_height = Inches(11.69)
-                        section.top_margin = Inches(1.0)
-                        section.bottom_margin = Inches(1.0)
-                        section.left_margin = Inches(1.2)
-                        section.right_margin = Inches(1.2)
+                        section.top_margin = Inches(0.6)
+                        section.bottom_margin = Inches(0.6)
+                        section.left_margin = Inches(0.6)
+                        section.right_margin = Inches(0.6)
                         
+                    # 1. หัวเอกสาร
                     p_title = doc.add_paragraph()
                     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    p_title.paragraph_format.space_after = Pt(24)
-                    r_title = p_title.add_run(f"วางบิลข้าวโพด เจ้นัชชา ({selected_display})")
-                    r_title.font.name = "TH Sarabun PSK"
-                    r_title.font.size = Pt(22)
+                    p_title.paragraph_format.space_after = Pt(4)
+                    r_title = p_title.add_run("ใบวางบิล")
+                    r_title.font.name = "TH SarabunPSK"
+                    r_title.font.size = Pt(24)
                     r_title.font.bold = True
                     
-                    for count, item in enumerate(selected_indices, 1):
-                        if count > 1:
-                            doc.add_page_break()
-                            
-                        header_text = f"ทะเบียน {item['plate']} ({selected_display}-{item['destination']})"
+                    today_str = datetime.now().strftime("%d/%m/%Y")
+                    p_date = doc.add_paragraph()
+                    p_date.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    p_date.paragraph_format.space_after = Pt(16)
+                    r_date = p_date.add_run(f"วันที่ {today_str}")
+                    r_date.font.name = "TH SarabunPSK"
+                    r_date.font.size = Pt(16)
+                    
+                    # 2. สร้างตารางรายการหลัก (11 คอลัมน์)
+                    # เพิ่มแถวเผื่อให้มีบรรทัดว่าง 4 บรรทัดเหมือนต้นฉบับ
+                    total_table_rows = max(len(selected_indices) + 2, 5)
+                    table = doc.add_table(rows=total_table_rows, cols=11)
+                    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+                    set_table_borders(table)
+                    
+                    headers = ["ลำดับที่", "ทะเบียน", "สินค้า", "วันที่ขึ้น", "สถานที่ขึ้น", "สถานที่ลง", "วันที่ลง", "นน.\nต้นทาง", "นน.\nปลายทาง", "บาท/\nตัน", "ราคาสุทธิ"]
+                    
+                    # หัวตาราง
+                    hdr_cells = table.rows[0].cells
+                    for i, head_text in enumerate(headers):
+                        p = hdr_cells[i].paragraphs[0]
+                        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        r = p.add_run(head_text)
+                        r.font.name = "TH SarabunPSK"
+                        r.font.size = Pt(11)
+                        r.font.bold = True
                         
-                        weight_val = item['display_weight']
-                        if item['weight_end'] is not None and str(item['weight_end']).strip() != "":
-                            weight_str = f"นน.ปลายทาง {weight_val:,.0f}" if isinstance(weight_val, (int, float)) else f"นน.ปลายทาง {weight_val or '-'}"
-                        else:
-                            weight_str = f"นน.ต้นทาง {weight_val:,.0f}" if isinstance(weight_val, (int, float)) else f"นน.ต้นทาง {weight_val or '-'}"
+                    # ใส่ข้อมูลรายการ
+                    total_price_sum = 0
+                    for idx, item in enumerate(selected_indices, 1):
+                        row_cells = table.rows[idx].cells
                         
-                        diff_val = item['weight_diff']
-                        if isinstance(diff_val, (int, float)):
-                            sign = "+" if diff_val > 0 else ""
-                            diff_str = f"ส่วนต่างน้ำหนัก {sign}{diff_val:,.0f} กิโลกรัม"
-                        elif diff_val is not None and str(diff_val).strip() != "":
-                            diff_str = f"ส่วนต่างน้ำหนัก {diff_val}"
-                        else:
-                            diff_str = "ส่วนต่างน้ำหนัก -"
-                            
-                        price_str = f"ราคา {item['price']}" if item['price'] else "ราคา -"
+                        w_start_str = f"{item['weight_start']:,.0f}" if isinstance(item['weight_start'], (int, float)) else str(item['weight_start'])
+                        w_end_str = f"{item['weight_end']:,.0f}" if isinstance(item['weight_end'], (int, float)) else str(item['weight_end'])
                         
-                        for text in [header_text, weight_str, diff_str, price_str]:
-                            p = doc.add_paragraph()
-                            p.paragraph_format.space_after = Pt(12)
-                            r = p.add_run(text)
-                            r.font.name = "TH Sarabun PSK"
-                            r.font.size = Pt(16)
+                        row_data = [
+                            str(idx),
+                            item['plate'],
+                            item['product'],
+                            item['date_up'],
+                            item['origin'],
+                            item['destination'],
+                            item['date_down'],
+                            w_start_str,
+                            w_end_str,
+                            str(item['price']),
+                            "-"
+                        ]
+                        
+                        for c_idx, val in enumerate(row_data):
+                            p = row_cells[c_idx].paragraphs[0]
+                            p.alignment = WD_ALIGN_PARAGRAPH.CENTER if c_idx in [0, 1, 3, 6] else WD_ALIGN_PARAGRAPH.LEFT
+                            r = p.add_run(val)
+                            r.font.name = "TH SarabunPSK"
+                            r.font.size = Pt(11)
                             
-                        p_status = doc.add_paragraph()
-                        p_status.paragraph_format.space_after = Pt(12)
-                        r_status = p_status.add_run("*ลงเรียบร้อย*")
-                        r_status.font.name = "TH Sarabun PSK"
-                        r_status.font.size = Pt(16)
-                        r_status.font.bold = True
-                        add_highlight(r_status)
+                    # แถวสุดท้าย: ยอดสุทธิ (รวมเซลล์ 0-9)
+                    sum_row_cells = table.rows[-1].cells
+                    sum_row_cells[0].merge(sum_row_cells[9])
+                    
+                    p_sum_label = sum_row_cells[0].paragraphs[0]
+                    p_sum_label.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    r_sum_label = p_sum_label.add_run("ยอดสุทธิ   ")
+                    r_sum_label.font.name = "TH SarabunPSK"
+                    r_sum_label.font.size = Pt(12)
+                    r_sum_label.font.bold = True
+                    
+                    p_sum_val = sum_row_cells[10].paragraphs[0]
+                    p_sum_val.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    r_sum_val = p_sum_val.add_run("-")
+                    r_sum_val.font.name = "TH SarabunPSK"
+                    r_sum_val.font.size = Pt(12)
+                    r_sum_val.font.bold = True
+                    
+                    # 3. รายละเอียดการชำระเงินด้านล่าง
+                    doc.add_paragraph().paragraph_format.space_after = Pt(8)
+                    
+                    p_pay_title = doc.add_paragraph()
+                    p_pay_title.paragraph_format.space_after = Pt(4)
+                    r_pay_title = p_pay_title.add_run("รายละเอียดการชำระเงิน")
+                    r_pay_title.font.name = "TH SarabunPSK"
+                    r_pay_title.font.size = Pt(14)
+                    r_pay_title.font.bold = True
+                    
+                    pay_table = doc.add_table(rows=3, cols=2)
+                    pay_data = [
+                        ("ชื่อบัญชี :", "หจก. ทีเอ็นพี เลขที่ 44 หมู่ที่ 9 ต.ม่วงคำ"),
+                        ("ธนาคาร :", "กสิกรไทย"),
+                        ("เลขที่บัญชี :", "097-1-01627-2")
+                    ]
+                    
+                    for r_idx, (label, val) in enumerate(pay_data):
+                        row_cells = pay_table.rows[r_idx].cells
+                        
+                        p_lbl = row_cells[0].paragraphs[0]
+                        r_lbl = p_lbl.add_run(label)
+                        r_lbl.font.name = "TH SarabunPSK"
+                        r_lbl.font.size = Pt(13)
+                        r_lbl.font.bold = True
+                        
+                        p_val = row_cells[1].paragraphs[0]
+                        r_val = p_val.add_run(val)
+                        r_val.font.name = "TH SarabunPSK"
+                        r_val.font.size = Pt(13)
                     
                     bio = io.BytesIO()
                     doc.save(bio)
                     bio.seek(0)
                     
-                    st.success(f"สร้างไฟล์สำเร็จ! สรุปเลือกมาทำทั้งหมด {len(selected_indices)} รายการ")
+                    st.success(f"สร้างใบวางบิลสำเร็จ! รวม {len(selected_indices)} รายการ")
                     st.download_button(
-                        label="📥 กดดาวน์โหลดไฟล์ Word (.docx)",
+                        label="📥 กดดาวน์โหลดไฟล์ใบวางบิล (.docx)",
                         data=bio,
-                        file_name=f"วางบิลข้าวโพด_{selected_display}.docx",
+                        file_name=f"ใบวางบิล_{selected_display}.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         use_container_width=True
                     )
