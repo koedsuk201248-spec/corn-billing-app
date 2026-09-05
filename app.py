@@ -115,7 +115,7 @@ def add_word_field_formula(cell, formula_str, default_value_str, is_bold=False, 
 st.markdown("""
     <div class="header-card">
         <div class="header-title">🌽 ระบบสร้างใบวางบิลข้าวโพด</div>
-        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word แนวนอน - ไม่รวม นน.ต้นทาง ในแถวรวม</div>
+        <div class="header-subtitle">แปลงข้อมูล Excel เป็น Word แนวนอน - อ่านราคาตามรายการจริงจาก Excel</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -175,7 +175,6 @@ if uploaded_file is not None:
         default_dest = find_best_column(["ปลายทาง", "สถานที่ลง"], ["ปลายทาง"])
         default_w_start = find_best_column(["นน.ต้นทาง", "น้ำหนักต้นทาง"], ["ต้นทาง"])
         default_w_end = find_best_column(["นน.ปลายทาง", "น้ำหนักปลายทาง"], ["ปลายทาง"])
-        default_price = find_best_column(["ราคา"], ["ราคา", "บาท"])
 
         idx_plate = headers_found[default_plate]
         idx_prod = headers_found[default_prod]
@@ -185,7 +184,41 @@ if uploaded_file is not None:
         idx_dest = headers_found[default_dest]
         idx_w_start = headers_found[default_w_start]
         idx_w_end = headers_found[default_w_end]
-        idx_price = headers_found[default_price]
+
+        # ===== ค้นหาตำแหน่งคอลัมน์ราคาแบบยืดหยุ่น (แก้ไขใหม่: เรียงลำดับความสำคัญ) =====
+        # หมายเหตุ: ในไฟล์จริงมีทั้งคอลัมน์ "ราคา" (จ่ายให้คนขับ) และ "ราคาที่รับมา" (รับมาจากลูกค้า)
+        # ต้องหา "ราคาที่รับมา" แบบเจาะจงก่อนเสมอ ห้ามให้คำว่า "ราคา" เฉยๆ มาตัดหน้า
+        idx_price = None
+
+        # ขั้นที่ 1: หาคำที่เจาะจงชัดเจนว่าคือ "ราคาที่รับมา" ก่อนเป็นอันดับแรก
+        priority_exact_terms = ["ราคาที่รับมา", "ราคาทราบมา", "ราคาทรบมา", "อัตราค่าขนส่ง"]
+        for c in range(1, ws.max_column + 1):
+            cell_txt = str(ws.cell(row=header_row, column=c).value or "").strip()
+            if cell_txt in priority_exact_terms:
+                idx_price = c
+                break
+
+        # ขั้นที่ 2: ถ้ายังไม่เจอ ให้หาแบบคร่าวๆ ที่มีคำว่า "รับมา" อยู่ในหัวข้อ
+        if idx_price is None:
+            for c in range(1, ws.max_column + 1):
+                cell_txt = str(ws.cell(row=header_row, column=c).value or "").strip()
+                if "รับมา" in cell_txt:
+                    idx_price = c
+                    break
+
+        # ขั้นที่ 3: ถ้ายังไม่เจอเลย ค่อย fallback ไปหาคำว่า "ราคา" แบบกว้างๆ เป็นตัวเลือกสุดท้าย
+        if idx_price is None:
+            price_exclude_terms = ["ส่วนต่าง", "จำนวน", "รับเงิน"]
+            for c in range(1, ws.max_column + 1):
+                cell_txt = str(ws.cell(row=header_row, column=c).value or "").strip()
+                if "ราคา" in cell_txt and not any(ex in cell_txt for ex in price_exclude_terms):
+                    idx_price = c
+                    break
+
+        # ขั้นที่ 4: ถ้ายังไม่เจอจริงๆ ค่อย fallback ไปคอลัมน์ L (12)
+        if idx_price is None:
+            idx_price = 12
+        # ===== จบส่วนแก้ไข =====
 
         items_data = []
         last_valid_date = "-"
@@ -210,18 +243,20 @@ if uploaded_file is not None:
                 
                 weight_start = ws.cell(row=row, column=idx_w_start).value or 0
                 weight_end = ws.cell(row=row, column=idx_w_end).value or 0
-                raw_price = ws.cell(row=row, column=idx_price).value or 0
                 
-                price_val = 0.62
+                # อ่านค่าราคาจริงจากเซลล์ใน Excel
+                raw_price = ws.cell(row=row, column=idx_price).value
+                
+                price_val = 0.0
                 if isinstance(raw_price, (int, float)):
                     price_val = float(raw_price)
-                elif isinstance(raw_price, str):
-                    clean_p = raw_price.replace("/ตัน", "").replace("บาท", "").strip()
+                elif raw_price is not None:
+                    clean_p = str(raw_price).replace("/ตัน", "").replace("บาท", "").replace(",", "").strip()
                     try:
                         price_val = float(clean_p)
                     except:
-                        price_val = 0.62
-                        
+                        price_val = 0.0
+
                 if price_val > 100:
                     price_val = price_val / 1000.0
 
@@ -240,7 +275,22 @@ if uploaded_file is not None:
         if len(items_data) == 0:
             st.warning(f"⚠️ ไม่พบข้อมูลรายการในชีท **{selected_display}**")
         else:
-            unique_dates = list(set([item["date_up"] for item in items_data if item["date_up"] != "-"]))
+            # แสดงให้ผู้ใช้เห็นว่าระบบอ่านคอลัมน์ราคาจากคอลัมน์ไหน (ช่วยตรวจสอบได้ง่ายขึ้น)
+            price_header_text = str(ws.cell(row=header_row, column=idx_price).value or "").strip()
+            st.caption(f"💰 อ่านราคาจากคอลัมน์: **{price_header_text}** (คอลัมน์ที่ {idx_price})")
+
+            def date_sort_key(d):
+                # แปลง "d/m/yyyy" (พ.ศ.) เป็น tuple ตัวเลขเพื่อเรียงตามวันที่จริง
+                try:
+                    day, month, year = d.split("/")
+                    return (int(year), int(month), int(day))
+                except Exception:
+                    return (0, 0, 0)
+
+            unique_dates = sorted(
+                set([item["date_up"] for item in items_data if item["date_up"] != "-"]),
+                key=date_sort_key
+            )
             date_filter_options = ["แสดงทั้งหมด"] + unique_dates
             
             col_f1, col_f2 = st.columns(2)
@@ -276,8 +326,9 @@ if uploaded_file is not None:
                     
                 w_val = item['weight_end'] if item['weight_end'] != 0 else item['weight_start']
                 w_str = f"{w_val:,.0f}" if isinstance(w_val, (int, float)) else f"{w_val}"
+                p_str = f"{item['price_val']:.2f}"
                 
-                label = f"ข้อ {idx} [{item['date_up']}]: ทะเบียน {item['plate']} | สินค้า: {item['product']} | ปลายทาง: {item['destination']} | นน.: {w_str}"
+                label = f"ข้อ {idx} [{item['date_up']}]: ทะเบียน {item['plate']} | สินค้า: {item['product']} | ปลายทาง: {item['destination']} | นน.: {w_str} | ราคาที่อ่านได้: {p_str} บาท/กก."
                 
                 is_selected = st.checkbox(label, key=key_name)
                 if is_selected:
@@ -380,7 +431,7 @@ if uploaded_file is not None:
                         word_formula = f"={col_w_letter}{row_num}*J{row_num}"
                         add_word_field_formula(row_cells[10], word_formula, shipping_str, is_bold=False, font_size=14)
 
-                    # 3. แถวรวม (ไม่รวม นน.ต้นทาง - เว้นว่างช่อง นน.ต้นทาง)
+                    # 3. แถวรวม
                     row_sum = table.rows[-2].cells
                     p_sum_lbl = row_sum[6].paragraphs[0]
                     p_sum_lbl.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -388,8 +439,6 @@ if uploaded_file is not None:
                     r_sum_lbl.font.name = "TH SarabunPSK"
                     r_sum_lbl.font.bold = True
                     r_sum_lbl.font.size = Pt(14)
-                    
-                    # ช่อง นน.ต้นทาง เว้นว่าง ไม่ใส่ยอดรวม
                     
                     p_w_e = row_sum[8].paragraphs[0]
                     p_w_e.alignment = WD_ALIGN_PARAGRAPH.RIGHT
