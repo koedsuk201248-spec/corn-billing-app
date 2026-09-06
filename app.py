@@ -2,7 +2,7 @@ import streamlit as st
 import openpyxl
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.section import WD_ORIENTATION
 from docx.oxml import parse_xml, OxmlElement
@@ -125,6 +125,7 @@ with st.sidebar:
     uploaded_file = st.file_uploader("1. อัปโหลดไฟล์ Excel", type=["xlsx"])
     st.markdown("---")
     bill_date_input = st.date_input("2. เลือกวันที่ใบวางบิล:", value=date.today())
+    company_name_input = st.text_input("3. ชื่อบริษัท (แสดงบนหัวเอกสาร):", value="บริษัทชัยมงคลกิจ")
 
 if uploaded_file is not None:
     wb = openpyxl.load_workbook(uploaded_file, data_only=True)
@@ -363,6 +364,16 @@ if uploaded_file is not None:
                     custom_date_be_str = format_date_thai(bill_date_input)
                     p_date = doc.add_paragraph()
                     p_date.paragraph_format.space_after = Pt(12)
+                    p_date.paragraph_format.tab_stops.add_tab_stop(
+                        Inches(11.69 - 0.5 - 0.5), WD_TAB_ALIGNMENT.RIGHT
+                    )
+                    r_company = p_date.add_run(company_name_input)
+                    r_company.font.name = "TH SarabunPSK"
+                    r_company.font.size = Pt(18)
+                    r_company.font.bold = True
+
+                    r_tab = p_date.add_run("\t")
+
                     r_date = p_date.add_run(f"วันที่ : {custom_date_be_str}")
                     r_date.font.name = "TH SarabunPSK"
                     r_date.font.size = Pt(18)
@@ -370,11 +381,11 @@ if uploaded_file is not None:
                     
                     # 2. ตารางหลัก
                     total_rows = len(selected_indices) + 3
-                    table = doc.add_table(rows=total_rows, cols=9)
+                    table = doc.add_table(rows=total_rows, cols=10)
                     table.alignment = WD_TABLE_ALIGNMENT.CENTER
                     set_table_borders(table)
                     
-                    headers = ["ลำดับ", "ทะเบียน", "สินค้า", "สถานที่ขึ้น", "สถานที่ลง", "นน.\nต้นทาง", "นน.\nปลายทาง", "บาท/กก.", "ค่าขนส่ง"]
+                    headers = ["ลำดับ", "วันที่", "สินค้า", "ทะเบียน", "สถานที่ขึ้น", "สถานที่ลง", "นน.\nต้นทาง", "นน.\nปลายทาง", "บาท/กก.", "ค่าขนส่ง"]
                     
                     hdr_cells = table.rows[0].cells
                     for i, head_text in enumerate(headers):
@@ -409,8 +420,9 @@ if uploaded_file is not None:
                         
                         row_data = [
                             str(idx),
-                            item['plate'],
+                            item['date_up'],
                             item['product'],
+                            item['plate'],
                             item['origin'],
                             item['destination'],
                             w_start_str,
@@ -420,39 +432,39 @@ if uploaded_file is not None:
                         
                         for c_idx, val in enumerate(row_data):
                             p = row_cells[c_idx].paragraphs[0]
-                            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if c_idx in [5, 6, 7] else (WD_ALIGN_PARAGRAPH.CENTER if c_idx in [0, 1] else WD_ALIGN_PARAGRAPH.LEFT)
+                            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if c_idx in [6, 7, 8] else (WD_ALIGN_PARAGRAPH.CENTER if c_idx in [0, 1, 3] else WD_ALIGN_PARAGRAPH.LEFT)
                             r = p.add_run(val)
                             r.font.name = "TH SarabunPSK"
                             r.font.size = Pt(14)
                             
-                        col_w_letter = 'G' if w_end > 0 else 'F'
-                        word_formula = f"={col_w_letter}{row_num}*H{row_num}"
-                        add_word_field_formula(row_cells[8], word_formula, shipping_str, is_bold=False, font_size=14)
+                        col_w_letter = 'H' if w_end > 0 else 'G'
+                        word_formula = f"={col_w_letter}{row_num}*I{row_num}"
+                        add_word_field_formula(row_cells[9], word_formula, shipping_str, is_bold=False, font_size=14)
 
                     # 3. แถวรวม
                     row_sum = table.rows[-2].cells
-                    p_sum_lbl = row_sum[4].paragraphs[0]
+                    p_sum_lbl = row_sum[5].paragraphs[0]
                     p_sum_lbl.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     r_sum_lbl = p_sum_lbl.add_run("รวม")
                     r_sum_lbl.font.name = "TH SarabunPSK"
                     r_sum_lbl.font.bold = True
                     r_sum_lbl.font.size = Pt(14)
                     
-                    p_w_e = row_sum[6].paragraphs[0]
+                    p_w_e = row_sum[7].paragraphs[0]
                     p_w_e.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     r_w_e = p_w_e.add_run(f"{sum_w_end:,.0f}" if sum_w_end > 0 else "0")
                     r_w_e.font.name = "TH SarabunPSK"
                     r_w_e.font.bold = True
                     r_w_e.font.size = Pt(14)
                     
-                    add_word_field_formula(row_sum[8], "=SUM(ABOVE)", f"{sum_total_shipping:,.2f}", is_bold=True, font_size=14)
+                    add_word_field_formula(row_sum[9], "=SUM(ABOVE)", f"{sum_total_shipping:,.2f}", is_bold=True, font_size=14)
 
                     # 4. แถวยอดสุทธิ
                     row_net = table.rows[-1].cells
                     for cell in row_net:
                         set_cell_background(cell, "E8EEF8")
                         
-                    row_net[0].merge(row_net[7])
+                    row_net[0].merge(row_net[8])
                     p_net_lbl = row_net[0].paragraphs[0]
                     p_net_lbl.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     r_net_lbl = p_net_lbl.add_run("ยอดสุทธิ   ")
@@ -460,7 +472,7 @@ if uploaded_file is not None:
                     r_net_lbl.font.bold = True
                     r_net_lbl.font.size = Pt(14)
                     
-                    add_word_field_formula(row_net[8], "=I" + str(total_rows - 1), f"{sum_total_shipping:,.2f}", is_bold=True, font_size=14)
+                    add_word_field_formula(row_net[9], "=J" + str(total_rows - 1), f"{sum_total_shipping:,.2f}", is_bold=True, font_size=14)
 
                     # 5. รายละเอียดการชำระเงิน
                     doc.add_paragraph().paragraph_format.space_after = Pt(12)
