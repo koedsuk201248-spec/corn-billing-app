@@ -370,11 +370,11 @@ if uploaded_file is not None:
                     
                     # 2. ตารางหลัก
                     total_rows = len(selected_indices) + 3
-                    table = doc.add_table(rows=total_rows, cols=11)
+                    table = doc.add_table(rows=total_rows, cols=9)
                     table.alignment = WD_TABLE_ALIGNMENT.CENTER
                     set_table_borders(table)
                     
-                    headers = ["ลำดับ", "ทะเบียน", "สินค้า", "วันที่ขึ้น", "สถานที่ขึ้น", "สถานที่ลง", "วันที่ลง", "นน.\nต้นทาง", "นน.\nปลายทาง", "บาท/กก.", "ค่าขนส่ง"]
+                    headers = ["ลำดับ", "ทะเบียน", "สินค้า", "สถานที่ขึ้น", "สถานที่ลง", "นน.\nต้นทาง", "นน.\nปลายทาง", "บาท/กก.", "ค่าขนส่ง"]
                     
                     hdr_cells = table.rows[0].cells
                     for i, head_text in enumerate(headers):
@@ -411,10 +411,8 @@ if uploaded_file is not None:
                             str(idx),
                             item['plate'],
                             item['product'],
-                            item['date_up'],
                             item['origin'],
                             item['destination'],
-                            item['date_down'],
                             w_start_str,
                             w_end_str,
                             f"{price_kg:.2f}"
@@ -422,39 +420,39 @@ if uploaded_file is not None:
                         
                         for c_idx, val in enumerate(row_data):
                             p = row_cells[c_idx].paragraphs[0]
-                            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if c_idx in [7, 8, 9] else (WD_ALIGN_PARAGRAPH.CENTER if c_idx in [0, 1, 3, 6] else WD_ALIGN_PARAGRAPH.LEFT)
+                            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if c_idx in [5, 6, 7] else (WD_ALIGN_PARAGRAPH.CENTER if c_idx in [0, 1] else WD_ALIGN_PARAGRAPH.LEFT)
                             r = p.add_run(val)
                             r.font.name = "TH SarabunPSK"
                             r.font.size = Pt(14)
                             
-                        col_w_letter = 'I' if w_end > 0 else 'H'
-                        word_formula = f"={col_w_letter}{row_num}*J{row_num}"
-                        add_word_field_formula(row_cells[10], word_formula, shipping_str, is_bold=False, font_size=14)
+                        col_w_letter = 'G' if w_end > 0 else 'F'
+                        word_formula = f"={col_w_letter}{row_num}*H{row_num}"
+                        add_word_field_formula(row_cells[8], word_formula, shipping_str, is_bold=False, font_size=14)
 
                     # 3. แถวรวม
                     row_sum = table.rows[-2].cells
-                    p_sum_lbl = row_sum[6].paragraphs[0]
+                    p_sum_lbl = row_sum[4].paragraphs[0]
                     p_sum_lbl.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     r_sum_lbl = p_sum_lbl.add_run("รวม")
                     r_sum_lbl.font.name = "TH SarabunPSK"
                     r_sum_lbl.font.bold = True
                     r_sum_lbl.font.size = Pt(14)
                     
-                    p_w_e = row_sum[8].paragraphs[0]
+                    p_w_e = row_sum[6].paragraphs[0]
                     p_w_e.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     r_w_e = p_w_e.add_run(f"{sum_w_end:,.0f}" if sum_w_end > 0 else "0")
                     r_w_e.font.name = "TH SarabunPSK"
                     r_w_e.font.bold = True
                     r_w_e.font.size = Pt(14)
                     
-                    add_word_field_formula(row_sum[10], "=SUM(ABOVE)", f"{sum_total_shipping:,.2f}", is_bold=True, font_size=14)
+                    add_word_field_formula(row_sum[8], "=SUM(ABOVE)", f"{sum_total_shipping:,.2f}", is_bold=True, font_size=14)
 
                     # 4. แถวยอดสุทธิ
                     row_net = table.rows[-1].cells
                     for cell in row_net:
                         set_cell_background(cell, "E8EEF8")
                         
-                    row_net[0].merge(row_net[9])
+                    row_net[0].merge(row_net[7])
                     p_net_lbl = row_net[0].paragraphs[0]
                     p_net_lbl.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     r_net_lbl = p_net_lbl.add_run("ยอดสุทธิ   ")
@@ -462,7 +460,7 @@ if uploaded_file is not None:
                     r_net_lbl.font.bold = True
                     r_net_lbl.font.size = Pt(14)
                     
-                    add_word_field_formula(row_net[10], "=K" + str(total_rows - 1), f"{sum_total_shipping:,.2f}", is_bold=True, font_size=14)
+                    add_word_field_formula(row_net[8], "=I" + str(total_rows - 1), f"{sum_total_shipping:,.2f}", is_bold=True, font_size=14)
 
                     # 5. รายละเอียดการชำระเงิน
                     doc.add_paragraph().paragraph_format.space_after = Pt(12)
